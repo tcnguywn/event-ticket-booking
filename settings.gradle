@@ -1,0 +1,17 @@
+rootProject.name = 'EventTicketing'
+
+include 'gateway'
+project(':gateway').projectDir = file('gateway')
+
+include 'event-ticket-service'
+project(':event-ticket-service').projectDir = file('services/event-ticket-service')
+
+include 'order-service'
+project(':order-service').projectDir = file('services/order-service')
+
+include 'payment-service'
+project(':payment-service').projectDir = file('services/payment-service')
+
+include 'notification-service'
+project(':notification-service').projectDir = file('services/notification-service')
+

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TicketFlow — High-Concurrency Distributed Ticketing Platform</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="app-header">
+        <div class="brand">
+            <div class="brand-icon">⚡</div>
+            <div>
+                <div class="brand-title">TICKETFLOW // CONCURRENCY TICKETING PLATFORM</div>
+                <div style="font-size: 11px; color: var(--text-muted); letter-spacing: 0.02em;">
+                    Distributed Microservices: Gateway • Lua Quota • Saga • Elasticsearch
+                </div>
+            </div>
+        </div>
+
+        <div class="header-controls">
+            <!-- Mode Selector -->
+            <div class="control-item">
+                <span>Cổng API:</span>
+                <select id="select-target-mode">
+                    <option value="GATEWAY" selected>API Gateway (:8888)</option>
+                    <option value="DIRECT">Gọi Trực Tiếp Từng Service</option>
+                </select>
+            </div>
+
+            <!-- Role Selector -->
+            <div class="control-item">
+                <span>Actor / Role:</span>
+                <select id="select-user-role">
+                    <option value="USER" selected>👤 Khách Hàng (John Doe)</option>
+                    <option value="ORGANIZER">🎪 Ban Tổ Chức (Organizer)</option>
+                    <option value="STAFF">🎟️ Nhân Viên Soát Vé (Gate Staff)</option>
+                    <option value="ADMIN">🛡️ Quản Trị Viên (Admin)</option>
+                </select>
+            </div>
+
+            <!-- Status Indicator -->
+            <div class="control-item" style="gap: 6px;">
+                <span id="gateway-status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; display: inline-block;"></span>
+                <span id="gateway-status-text" style="font-size: 11px; font-weight: 500;">Checking...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="nav-bar">
+        <button class="nav-tab active" data-tab="events">🔍 Khám Phá Sự Kiện (Elasticsearch)</button>
+        <button class="nav-tab" data-tab="booking">🎪 Sơ Đồ Ghế & Đặt Chỗ</button>
+        <button class="nav-tab" data-tab="orders">📦 Đơn Hàng & Thanh Toán (VNPay)</button>
+        <button class="nav-tab" data-tab="organizer">📊 Organizer Studio & Báo Cáo</button>
+        <button class="nav-tab" data-tab="checkin">🎟️ Soát Vé (Staff Scanner)</button>
+        <button class="nav-tab" data-tab="simulator" style="color: var(--primary);">🧪 Mô Phỏng Kịch Bản Test</button>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main>
+        <!-- Events View -->
+        <section id="events-view" class="tab-pane active"></section>
+
+        <!-- Booking View -->
+        <section id="booking-view" class="tab-pane"></section>
+
+        <!-- Orders View -->
+        <section id="orders-view" class="tab-pane"></section>
+
+        <!-- Organizer View -->
+        <section id="organizer-view" class="tab-pane"></section>
+
+        <!-- Checkin View -->
+        <section id="checkin-view" class="tab-pane"></section>
+
+        <!-- Test Simulator View -->
+        <section id="simulator-view" class="tab-pane"></section>
+    </main>
+
+    <!-- Minimalist Debug Stream Console -->
+    <aside class="debug-console">
+        <div class="console-header">
+            <span class="console-title">
+                <span>⚡ LIVE TELEMETRY & API DEBUG STREAM</span>
+            </span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <span style="font-size: 11px; color: #64748b;">(Tự động ghi nhận mọi Request / Response & Latency)</span>
+                <button class="btn btn-secondary btn-sm" id="btn-clear-logs" style="background: transparent; color: #94a3b8; border-color: #334155; padding: 2px 8px;">
+                    Xóa Logs
+                </button>
+            </div>
+        </div>
+        <div class="console-body" id="debug-log-stream">
+            <div class="log-row">
+                <span class="log-time">[System]</span>
+                <span class="log-info">Khởi động thành công giao diện TicketFlow Minimalist UI. Sẵn sàng nhận thao tác.</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Scripts (ES Modules) -->
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>

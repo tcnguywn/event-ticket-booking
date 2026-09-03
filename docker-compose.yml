@@ -1,0 +1,337 @@
+version: '3.8'
+
+networks:
+  ticketing-net:
+    driver: bridge
+
+services:
+
+  # ============================================================
+  # 1. Redis 7 (Cache, Rate Limit, Distributed Lock, Delay Queue)
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: ticketing_redis
+    hostname: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - ticketing-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ============================================================
+  # 2. Apache Kafka 3.7 (KRaft mode — No ZooKeeper)
+  # ============================================================
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: ticketing_kafka
+    hostname: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      CLUSTER_ID: 5L6g3nShT-eMCtK--X86sw
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - ticketing-net
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ============================================================
+  # 3. Kafka UI (Visual Dashboard on port 8086)
+  # ============================================================
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: ticketing_kafka_ui
+    ports:
+      - "8086:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - ticketing-net
+
+  # ============================================================
+  # 4. Keycloak 24+ (Identity & Access Management, OAuth2/OIDC)
+  # ============================================================
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.5
+    container_name: ticketing_keycloak
+    hostname: keycloak
+    command: start-dev --import-realm
+    ports:
+      - "8080:8080"
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://host.docker.internal:5432/keycloak_db
+      KC_DB_USERNAME: ${DB_USERNAME:-postgres}
+      KC_DB_PASSWORD: ${DB_PASSWORD:-root}
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+    volumes:
+      - ./scripts/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - ticketing-net
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080;echo -e \"GET /health/ready HTTP/1.1\r\nhost: localhost:8080\r\nConnection: close\r\n\r\n\" >&3;grep -q \"200 OK\" <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ============================================================
+  # 5. Zipkin (Distributed Tracing on port 9411)
+  # ============================================================
+#  zipkin:
+#    image: openzipkin/zipkin:latest
+#    container_name: ticketing_zipkin
+#    hostname: zipkin
+#    ports:
+#      - "9411:9411"
+#    networks:
+#      - ticketing-net
+
+  # ============================================================
+  # 6. Prometheus (Metrics Scraper on port 9090)
+  # ============================================================
+#  prometheus:
+#    image: prom/prometheus:latest
+#    container_name: ticketing_prometheus
+#    hostname: prometheus
+#    ports:
+#      - "9090:9090"
+#    volumes:
+#      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+#    networks:
+#      - ticketing-net
+
+  # ============================================================
+  # 7. Grafana (Visual Metrics Dashboard on port 3001)
+  # ============================================================
+#  grafana:
+#    image: grafana/grafana:latest
+#    container_name: ticketing_grafana
+#    hostname: grafana
+#    ports:
+#      - "3001:3000"
+#    environment:
+#      - GF_SECURITY_ADMIN_USER=admin
+#      - GF_SECURITY_ADMIN_PASSWORD=admin
+#    volumes:
+#      - grafana_data:/var/lib/grafana
+#    networks:
+#      - ticketing-net
+
+  # ============================================================
+  # 8. API Gateway (port 8888)
+  # ============================================================
+  api-gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: ticketing_gateway
+    ports:
+      - "8888:8888"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/event-ticketing/protocol/openid-connect/certs
+      SPRING_DATA_REDIS_HOST: redis
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    networks:
+      - ticketing-net
+
+  # ============================================================
+  # 9. event-ticket-service (port 8082)
+  # ============================================================
+  event-ticket-service:
+    build:
+      context: ./services/event-ticket-service
+      dockerfile: Dockerfile
+    container_name: ticketing_event_ticket
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://host.docker.internal:5432/event_ticket_db
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-root}
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - ticketing-net
+
+  # ============================================================
+  # 10. order-service (port 8083)
+  # ============================================================
+  order-service:
+    build:
+      context: ./services/order-service
+      dockerfile: Dockerfile
+    container_name: ticketing_order
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://host.docker.internal:5432/order_db
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-root}
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - ticketing-net
+
+  # ============================================================
+  # 11. payment-service (port 8084)
+  # ============================================================
+  payment-service:
+    build:
+      context: ./services/payment-service
+      dockerfile: Dockerfile
+    container_name: ticketing_payment
+    ports:
+      - "8084:8084"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://host.docker.internal:5432/payment_db
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-root}
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - ticketing-net
+
+  # ============================================================
+  # 12. notification-service (port 8085)
+  # ============================================================
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: ticketing_notification
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MAIL_HOST: ${MAIL_HOST:-mailhog}
+      MAIL_PORT: ${MAIL_PORT:-1025}
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://zipkin:9411/api/v2/spans
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+    networks:
+      - ticketing-net
+
+  # ============================================================
+  # 13. MailHog (Local SMTP Server & Web UI on port 8025)
+  # ============================================================
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: ticketing_mailhog
+    ports:
+      - "1025:1025" # SMTP server
+      - "8025:8025" # Web UI
+    networks:
+      - ticketing-net
+
+  # ============================================================
+  # 14. Elasticsearch 8.11 (Search & Faceted Filter on port 9200)
+  # ============================================================
+  elasticsearch:
+    image: elasticsearch:8.11.3
+    container_name: ticketing_elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    networks:
+      - ticketing-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # 15. Minimalist Frontend Service (Web UI on port 3000)
+  # ============================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ticketing_frontend
+    ports:
+      - "3000:80"
+    networks:
+      - ticketing-net
+    depends_on:
+      - gateway
+
+
+
+

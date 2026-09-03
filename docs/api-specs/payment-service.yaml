@@ -1,0 +1,349 @@
+openapi: 3.0.3
+info:
+  title: Payment Service API
+  description: |
+    API specification for Payment Service (direct access & via Gateway).
+    Tích hợp cổng thanh toán PayOS SDK v2 (VietQR), xử lý webhook callback và hoàn tiền (refund).
+  version: 2.0.0
+
+servers:
+  - url: http://localhost:8084
+    description: Local development (direct)
+  - url: http://localhost:8888
+    description: API Gateway
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: UP
+
+  /api/v1/payments/webhook:
+    post:
+      summary: Webhook nhận callback từ cổng thanh toán PayOS
+      description: |
+        Endpoint công khai (public) nhận dữ liệu thanh toán từ PayOS Server.
+        Tự động xác thực chữ ký HMAC-SHA256 (checksum key) trước khi xử lý.
+        Nếu mã `code == "00"` $\rightarrow$ Đánh dấu Payment COMPLETED $\rightarrow$ Ghi Outbox `payment.completed`.
+      operationId: handlePayOSWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayOSWebhookBody'
+      responses:
+        '200':
+          description: Xử lý webhook thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: string
+                    example: "true"
+        '401':
+          description: Chữ ký số không hợp lệ (Invalid signature)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Invalid signature or processing failed"
+
+  /api/v1/payments/url:
+    get:
+      summary: Lấy URL thanh toán PayOS và mã QR theo orderId
+      description: |
+        Frontend gọi API này sau khi đặt vé thành công để lấy link thanh toán hoặc hiển thị mã QR VietQR.
+      operationId: getPaymentUrl
+      parameters:
+        - name: orderId
+          in: query
+          required: true
+          description: ID của đơn hàng (UUID)
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentUrlResponse'
+        '404':
+          description: Không tìm thấy giao dịch thanh toán cho đơn hàng này
+
+  /api/v1/payments/{orderId}:
+    get:
+      summary: Xem trạng thái và thông tin thanh toán theo orderId
+      operationId: getPaymentByOrderId
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          description: ID của đơn hàng (UUID)
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '404':
+          description: Không tìm thấy đơn hàng
+
+  /api/v1/payments/{orderId}/refund:
+    post:
+      summary: Yêu cầu hoàn tiền / hủy link thanh toán cho đơn hàng
+      operationId: refundPayment
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          description: ID của đơn hàng cần hoàn tiền
+          schema:
+            type: string
+            format: uuid
+        - name: X-User-Id
+          in: header
+          required: true
+          description: User ID (UUID) — inject bởi API Gateway
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  example: "User requested refund"
+      responses:
+        '200':
+          description: Yêu cầu hoàn tiền đã được xử lý
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefundResponse'
+        '400':
+          description: Đơn hàng chưa được thanh toán hoặc không đủ điều kiện hoàn tiền
+
+components:
+  schemas:
+    PayOSWebhookBody:
+      type: object
+      required:
+        - code
+        - desc
+        - data
+        - signature
+      properties:
+        code:
+          type: string
+          description: Mã trạng thái từ PayOS ("00" = thành công)
+          example: "00"
+        desc:
+          type: string
+          example: "success"
+        data:
+          type: object
+          properties:
+            orderCode:
+              type: integer
+              format: int64
+              example: 123456789
+            amount:
+              type: integer
+              format: int64
+              example: 1500000
+            description:
+              type: string
+              example: "Thanh toan ve su kien"
+            accountNumber:
+              type: string
+              example: "1234567890"
+            reference:
+              type: string
+              example: "FT123456"
+            transactionDateTime:
+              type: string
+              example: "2026-08-27 15:30:00"
+            currency:
+              type: string
+              example: "VND"
+            paymentLinkId:
+              type: string
+              example: "link-12345"
+            code:
+              type: string
+              example: "00"
+            desc:
+              type: string
+              example: "Success"
+        signature:
+          type: string
+          description: Chữ ký số HMAC-SHA256 để xác thực tính toàn vẹn của webhook
+          example: "a1b2c3d4e5f6..."
+
+    PaymentUrlResponse:
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        payosOrderCode:
+          type: integer
+          format: int64
+        checkoutUrl:
+          type: string
+          example: "https://pay.payos.vn/web/123456"
+        qrCodeUrl:
+          type: string
+          example: "data:image/png;base64,iVBORw0KGgo..."
+        status:
+          type: string
+          enum: [PENDING, COMPLETED, FAILED, REFUNDED, REFUND_FAILED]
+          example: "PENDING"
+        expiredAt:
+          type: string
+          format: date-time
+
+    PaymentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        orderId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+        eventId:
+          type: string
+        amount:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [PENDING, COMPLETED, FAILED, REFUNDED, REFUND_FAILED]
+        payosOrderCode:
+          type: integer
+          format: int64
+        checkoutUrl:
+          type: string
+        qrCodeUrl:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        expiredAt:
+          type: string
+          format: date-time
+
+    RefundResponse:
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [SUCCESS, FAILED]
+          example: "SUCCESS"
+        message:
+          type: string
+          example: "Payment cancelled and refunded successfully"
+
+    # =============================================
+    # KAFKA EVENT SCHEMAS (tham khảo)
+    # =============================================
+
+    KafkaOrderPaymentRequestedEvent:
+      description: |
+        **Topic:** `order.created`
+        **Producer:** order-service
+        **Consumer:** payment-service
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+        eventId:
+          type: string
+        amount:
+          type: integer
+          format: int64
+        description:
+          type: string
+        idempotencyKey:
+          type: string
+        requestedAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                example: "VIP"
+              quantity:
+                type: integer
+                example: 2
+              price:
+                type: integer
+                format: int64
+                example: 500000
+
+    KafkaPaymentResultEvent:
+      description: |
+        **Topic:** `payment.completed` hoặc `payment.failed`
+        **Producer:** payment-service
+        **Consumer:** order-service
+      type: object
+      properties:
+        eventId:
+          type: string
+        orderId:
+          type: string
+        paymentId:
+          type: string
+        status:
+          type: string
+          enum: [COMPLETED, FAILED]
+        reason:
+          type: string
+          nullable: true
+        processedAt:
+          type: string
+          format: date-time

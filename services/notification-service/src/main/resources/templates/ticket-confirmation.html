@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Xác nhận đặt vé thành công</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            color: #333333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 600px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            color: #007bff;
+            margin: 0;
+        }
+        .order-details {
+            margin-bottom: 30px;
+        }
+        .order-details table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .order-details th, .order-details td {
+            text-align: left;
+            padding: 10px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .order-details th {
+            width: 40%;
+            color: #555555;
+        }
+        .qr-code {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .qr-code img {
+            max-width: 250px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .footer {
+            text-align: center;
+            font-size: 0.9em;
+            color: #777777;
+            margin-top: 30px;
+            border-top: 1px solid #e0e0e0;
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Xác nhận đặt vé thành công!</h1>
+            <p>Xin trân trọng cảm ơn quý khách đã mua vé. Đơn hàng của quý khách đã được lên lịch.</p>
+        </div>
+        
+        <div class="order-details">
+            <h3>Thông tin đơn hàng</h3>
+            <table>
+                <tr>
+                    <th>Mã Đơn Hàng:</th>
+                    <td th:text="${orderId}">ORG-123456</td>
+                </tr>
+                <tr>
+                    <th>Mã Sự kiện:</th>
+                    <td th:text="${eventId}">EVT-9876</td>
+                </tr>
+            </table>
+
+            <h3>Chi tiết vé</h3>
+            <table>
+                <tr>
+                    <th>Loại vé</th>
+                    <th>Số lượng</th>
+                    <th>Đơn giá</th>
+                </tr>
+                <tr th:each="item : ${items}">
+                    <td th:text="${item['ticketTypeName']}">VIP</td>
+                    <td th:text="${item['quantity']}">2</td>
+                    <td th:text="${#numbers.formatDecimal(item['price'], 0, 'COMMA', 0, 'POINT')} + ' VND'">500,000 VND</td>
+                </tr>
+                <tr>
+                    <th colspan="2">Tổng tiền thanh toán:</th>
+                    <td th:text="${#numbers.formatDecimal(totalPrice, 0, 'COMMA', 0, 'POINT')} + ' VND'">1,000,000 VND</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="qr-code">
+            <h3>Mã QR Check-in của bạn</h3>
+            <p>Vui lòng xuất trình mã QR này tại cổng kiểm soát vé.</p>
+            <img src="cid:qrcode" alt="QR Code" />
+        </div>
+
+        <div class="footer">
+            <p>Đây là email tự động, vui lòng không trả lời. Nếu quý khách có bất kỳ câu hỏi nào, xin liên hệ bộ phận hỗ trợ khách hàng.</p>
+            <p>&copy; 2026 Hệ thống bán vé sự kiện</p>
+        </div>
+    </div>
+</body>
+</html>

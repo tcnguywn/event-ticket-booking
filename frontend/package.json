@@ -1,0 +1,11 @@
+{
+  "name": "ticketing-frontend",
+  "version": "1.0.0",
+  "description": "Minimalist, clean, and comprehensive frontend for Event Ticketing Distributed System",
+  "scripts": {
+    "dev": "npx serve src -p 3000",
+    "start": "npx serve src -p 3000"
+  },
+  "keywords": ["ticketing", "flash-sale", "distributed-systems", "minimalist"],
+  "license": "MIT"
+}

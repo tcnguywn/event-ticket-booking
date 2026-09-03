@@ -1,0 +1,328 @@
+openapi: 3.0.3
+info:
+  title: Order Service API
+  description: |
+    API specification for Order Service (direct access, không qua Gateway).
+    Trong production, các header `X-User-*` được API Gateway inject tự động từ JWT.
+  version: 2.0.0
+
+servers:
+  - url: http://localhost:8083
+    description: Local development (direct)
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: healthCheckDirect
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: UP
+
+  /api/orders/my:
+    get:
+      summary: Xem lịch sử đặt vé của user hiện tại
+      operationId: getMyOrders
+      parameters:
+        - name: X-User-Id
+          in: header
+          required: true
+          description: User ID (UUID) — inject bởi API Gateway
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Lấy danh sách lịch sử đơn hàng thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_List_OrderResponse'
+
+  /api/orders/{id}:
+    get:
+      summary: Xem trạng thái của một đơn hàng cụ thể
+      operationId: getOrderById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID của đơn hàng
+          schema:
+            type: string
+            format: uuid
+        - name: X-User-Id
+          in: header
+          required: true
+          description: User ID (UUID) — inject bởi API Gateway
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Lấy thông tin đơn hàng thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_OrderResponse'
+        '403':
+          description: Không có quyền xem đơn hàng này
+        '404':
+          description: Không tìm thấy đơn hàng
+
+  /api/orders/{id}/cancel:
+    post:
+      summary: Hủy đơn hàng trước khi thanh toán
+      description: |
+        Chỉ user sở hữu đơn hàng mới có thể hủy.
+        Chỉ hủy được khi đơn đang ở trạng thái `PENDING`.
+        Sau khi hủy, hệ thống tự động:
+        1. Ghi Outbox event `ticket.release` → Kafka
+        2. event-ticket-service hoàn lại kho vé cho tất cả loại vé trong đơn
+      operationId: cancelOrder
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID của đơn hàng
+          schema:
+            type: string
+            format: uuid
+        - name: X-User-Id
+          in: header
+          required: true
+          description: User ID (UUID) — inject bởi API Gateway
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Hủy đơn hàng thành công
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Hủy đơn hàng thành công"
+                  body:
+                    type: string
+                    example: "CANCELLED"
+
+components:
+  schemas:
+
+    OrderItemResponse:
+      type: object
+      description: Thông tin chi tiết 1 loại vé trong đơn hàng
+      properties:
+        ticketTypeId:
+          type: string
+          format: uuid
+        ticketTypeName:
+          type: string
+          example: VIP
+        quantity:
+          type: integer
+          example: 2
+        price:
+          type: integer
+          format: int64
+          description: Đơn giá của loại vé
+          example: 500000
+
+    OrderResponse:
+      type: object
+      description: Thông tin đơn hàng bao gồm tất cả loại vé đã đặt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID đơn hàng
+        eventId:
+          type: string
+          format: uuid
+          description: ID sự kiện
+        items:
+          type: array
+          description: Danh sách chi tiết các loại vé trong đơn hàng
+          items:
+            $ref: '#/components/schemas/OrderItemResponse'
+        totalPrice:
+          type: integer
+          format: int64
+          description: Tổng tiền của đơn hàng (tính tất cả loại vé)
+          example: 1500000
+        status:
+          type: string
+          description: Trạng thái của đơn hàng
+          enum: [PENDING, CONFIRMED, CANCELLED]
+          example: PENDING
+        createdAt:
+          type: string
+          format: date-time
+
+    ApiResponse_OrderResponse:
+      type: object
+      properties:
+        status:
+          type: integer
+          example: 200
+        message:
+          type: string
+          example: Lấy thông tin đơn hàng thành công
+        body:
+          $ref: '#/components/schemas/OrderResponse'
+
+    ApiResponse_List_OrderResponse:
+      type: object
+      properties:
+        status:
+          type: integer
+          example: 200
+        message:
+          type: string
+          example: Lấy danh sách lịch sử đơn hàng thành công
+        body:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderResponse'
+
+    # =============================================
+    # KAFKA EVENT SCHEMAS (tham khảo)
+    # =============================================
+
+    KafkaOrderCreatedEvent:
+      description: |
+        **Topic:** `order.created`
+        **Producer:** order-service (Outbox)
+        **Consumer:** payment-service
+        **Mô tả:** Gửi khi Order được tạo PENDING, kích hoạt payment-service xử lý thanh toán.
+        Tương đương `OrderPaymentRequestedEvent`.
+      type: object
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        orderId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        amount:
+          type: integer
+          format: int64
+          description: Tổng số tiền cần thanh toán
+        description:
+          type: string
+          example: "Đặt vé sự kiện"
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              ticketTypeName:
+                type: string
+                example: VIP
+              quantity:
+                type: integer
+                example: 2
+              price:
+                type: integer
+                format: int64
+                example: 500000
+        requestedAt:
+          type: string
+          format: date-time
+        idempotencyKey:
+          type: string
+          format: uuid
+
+    KafkaOrderConfirmedEvent:
+      description: |
+        **Topic:** `order.confirmed`
+        **Producer:** order-service (Outbox)
+        **Consumer:** notification-service
+        **Mô tả:** Gửi khi thanh toán thành công (nhận từ `payment.completed`). Notification service dùng để gửi email + QR code.
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        eventId:
+          type: string
+          format: uuid
+        totalPrice:
+          type: integer
+          format: int64
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              ticketTypeName:
+                type: string
+                example: VIP
+              quantity:
+                type: integer
+                example: 2
+              price:
+                type: integer
+                format: int64
+                example: 500000
+
+    KafkaPaymentResultEvent:
+      description: |
+        **Topic:** `payment.completed` hoặc `payment.failed`
+        **Producer:** payment-service
+        **Consumer:** order-service
+        **Mô tả:** Cả hai topic đều dùng chung cấu trúc payload `PaymentResultEvent`.
+        - `status = COMPLETED` → order-service gọi `confirmOrder()`
+        - `status = FAILED`    → order-service gọi `cancelIfStillPending()`
+        `paymentId` được dùng làm **idempotency key** (unique per transaction).
+      type: object
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: ID sự kiện Kafka nội bộ (dùng để trace/log)
+        orderId:
+          type: string
+          format: uuid
+          description: ID đơn hàng cần cập nhật trạng thái
+        paymentId:
+          type: string
+          format: uuid
+          description: ID giao dịch thanh toán — dùng làm idempotency key
+        status:
+          type: string
+          enum: [COMPLETED, FAILED]
+          description: Trạng thái kết quả thanh toán
+        reason:
+          type: string
+          nullable: true
+          description: Lý do thất bại (chỉ có giá trị khi status = FAILED)
+          example: "Insufficient funds"
+        processedAt:
+          type: string
+          format: date-time
+          description: Thời điểm payment-service xử lý giao dịch

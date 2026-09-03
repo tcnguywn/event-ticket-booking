@@ -1,0 +1,434 @@
+openapi: 3.0.3
+info:
+  title: API Gateway
+  description: Cổng giao tiếp chính (API Gateway) tích hợp sẵn xác thực Keycloak qua JWT. Mảng các API dùng Token Bearer.
+  version: 2.0.0
+
+servers:
+  - url: http://localhost:8888
+    description: API Gateway
+  - url: http://localhost:8080
+    description: Keycloak Auth Server
+
+tags:
+  - name: Authentication (Keycloak)
+    description: Lấy JWT token từ Keycloak để dùng cho các API bảo mật
+  - name: Event Ticket Service
+    description: Quản lý sự kiện và đặt vé
+  - name: Order Service
+    description: Quản lý đơn hàng
+
+paths:
+  /realms/event-ticketing/protocol/openid-connect/token:
+    post:
+      tags:
+        - Authentication (Keycloak)
+      summary: Lấy Access Token từ Keycloak
+      description: Dùng username (VD organizer, john_doe) và password để lấy Bearer Token dùng cho các API phía dưới.
+      operationId: getToken
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                client_id:
+                  type: string
+                  example: event-ticketing-client
+                grant_type:
+                  type: string
+                  example: password
+                username:
+                  type: string
+                  example: john_doe
+                password:
+                  type: string
+                  example: 123
+              required:
+                - client_id
+                - grant_type
+                - username
+                - password
+      responses:
+        '200':
+          description: Đăng nhập thành công, trả về JWT Token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+
+  /api/events:
+    get:
+      tags:
+        - Event Ticket Service
+      summary: Lấy danh sách tất cả sự kiện (Công khai)
+      operationId: getAllEvents
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EventResponse'
+    post:
+      tags:
+        - Event Ticket Service
+      summary: Tạo sự kiện mới (Yêu cầu Token của ORGANIZER)
+      operationId: createEvent
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventRequest'
+      responses:
+        '201':
+          description: Tạo thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+
+  /api/events/{id}:
+    get:
+      tags:
+        - Event Ticket Service
+      summary: Lấy thông tin chi tiết một sự kiện (Công khai)
+      operationId: getEventById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+
+  /api/tickets/book:
+    post:
+      tags:
+        - Event Ticket Service
+      summary: Đặt nhiều loại vé trong 1 lượt (Yêu cầu Token của USER)
+      description: |
+        Cho phép user đặt nhiều loại vé cho 1 sự kiện cùng lúc.
+        Tổng số vé trong đơn không được vượt quá `maxTicketsPerUser` được cài đặt trên Event.
+        Mỗi loại vé không được vượt quá `maxOrderQuantity` của loại vé đó.
+      operationId: bookTicket
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookTicketRequest'
+            example:
+              eventId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+              items:
+                - ticketTypeId: "uuid-vip-type"
+                  quantity: 2
+                - ticketTypeId: "uuid-standard-type"
+                  quantity: 3
+      responses:
+        '200':
+          description: Đặt vé thành công (hoặc đang xử lý)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookTicketResponse'
+        '400':
+          description: Số lượng vượt quá giới hạn hoặc loại vé không hợp lệ
+        '410':
+          description: Đã hết vé (Sold Out)
+
+  /api/orders/my:
+    get:
+      tags:
+        - Order Service
+      summary: Xem lịch sử đặt vé của user hiện tại
+      operationId: getMyOrders
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lấy danh sách lịch sử đơn hàng thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_List_OrderResponse'
+
+  /api/orders/{id}:
+    get:
+      tags:
+        - Order Service
+      summary: Xem trạng thái của một đơn hàng cụ thể
+      operationId: getOrderById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse_OrderResponse'
+
+  /api/orders/{id}/cancel:
+    post:
+      tags:
+        - Order Service
+      summary: Hủy đơn hàng trước khi thanh toán
+      operationId: cancelOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Hủy đơn hàng thành công
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Bấm Authorize và dán access_token lấy được từ API Keycloak vào đây. API Gateway sẽ tự động lo phần dịch ra User ID.
+  
+  schemas:
+    # =============================================
+    # EVENT TICKET SERVICE SCHEMAS
+    # =============================================
+
+    CreateEventRequest:
+      type: object
+      required:
+        - title
+        - ticketTypes
+        - startTime
+        - endTime
+      properties:
+        title:
+          type: string
+          example: Đại nhạc hội
+        description:
+          type: string
+          example: Mô tả sự kiện
+        location:
+          type: string
+          example: Nhà hát lớn Hà Nội
+        startTime:
+          type: string
+          format: date-time
+          example: "2026-05-01T19:00:00"
+        endTime:
+          type: string
+          format: date-time
+          example: "2026-05-01T23:00:00"
+        maxTicketsPerUser:
+          type: integer
+          default: 10
+          description: Tổng số vé tối đa mà 1 user có thể đặt cho toàn bộ sự kiện này (tính tổng tất cả loại vé)
+          example: 5
+        ticketTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketTypeRequest'
+
+    TicketTypeRequest:
+      type: object
+      required:
+        - name
+        - price
+        - quantity
+      properties:
+        name:
+          type: string
+          example: VIP
+        price:
+          type: integer
+          format: int64
+          example: 500000
+        quantity:
+          type: integer
+          example: 100
+        maxOrderQuantity:
+          type: integer
+          default: 10
+          description: Số lượng tối đa mỗi loại vé này được đặt trong 1 đơn hàng
+          example: 4
+
+    EventResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        organizerId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [DRAFT, PUBLISHED, CANCELLED]
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        location:
+          type: string
+        maxTicketsPerUser:
+          type: integer
+          description: Tổng số vé tối đa mà 1 user có thể đặt cho sự kiện này
+        createdAt:
+          type: string
+          format: date-time
+
+    BookTicketRequest:
+      type: object
+      required:
+        - eventId
+        - items
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: ID của sự kiện cần đặt vé
+        items:
+          type: array
+          minItems: 1
+          description: Danh sách các loại vé và số lượng muốn đặt
+          items:
+            $ref: '#/components/schemas/BookTicketItemRequest'
+
+    BookTicketItemRequest:
+      type: object
+      required:
+        - ticketTypeId
+        - quantity
+      properties:
+        ticketTypeId:
+          type: string
+          format: uuid
+          description: ID loại vé
+        quantity:
+          type: integer
+          minimum: 1
+          description: Số lượng vé loại này muốn đặt
+
+    BookTicketResponse:
+      type: object
+      properties:
+        bookingGroupId:
+          type: string
+          format: uuid
+          description: ID nhóm booking — nhóm tất cả các vé khác loại đặt cùng 1 lượt
+        message:
+          type: string
+          example: Ticket booking is pending confirmation.
+        status:
+          type: string
+          enum: [PENDING, SENT, CANCELLED]
+
+    # =============================================
+    # ORDER SERVICE SCHEMAS
+    # =============================================
+
+    OrderItemResponse:
+      type: object
+      properties:
+        ticketTypeId:
+          type: string
+          format: uuid
+        ticketTypeName:
+          type: string
+          example: VIP
+        quantity:
+          type: integer
+          example: 2
+        price:
+          type: integer
+          format: int64
+          description: Đơn giá của loại vé này
+          example: 500000
+
+    OrderResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        eventId:
+          type: string
+          format: uuid
+        items:
+          type: array
+          description: Danh sách các loại vé trong đơn hàng
+          items:
+            $ref: '#/components/schemas/OrderItemResponse'
+        totalPrice:
+          type: integer
+          format: int64
+          description: Tổng tiền của đơn hàng
+          example: 1500000
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, CANCELLED]
+          example: PENDING
+        createdAt:
+          type: string
+          format: date-time
+
+    ApiResponse_OrderResponse:
+      type: object
+      properties:
+        status:
+          type: integer
+          example: 200
+        message:
+          type: string
+        body:
+          $ref: '#/components/schemas/OrderResponse'
+
+    ApiResponse_List_OrderResponse:
+      type: object
+      properties:
+        status:
+          type: integer
+          example: 200
+        message:
+          type: string
+        body:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderResponse'

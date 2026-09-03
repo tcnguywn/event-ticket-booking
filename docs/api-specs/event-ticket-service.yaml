@@ -1,0 +1,380 @@
+openapi: 3.0.3
+info:
+  title: Event Ticket Service API
+  description: |
+    API specification for Event Ticket Service (direct access, không qua Gateway).
+    Trong production, các header `X-User-*` được API Gateway inject tự động từ JWT.
+  version: 2.0.0
+
+servers:
+  - url: http://localhost:8081
+    description: Local development (direct)
+
+paths:
+  /actuator/health:
+    get:
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: UP
+
+  /api/events:
+    get:
+      summary: Lấy danh sách tất cả sự kiện
+      operationId: getAllEvents
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EventResponse'
+    post:
+      summary: Tạo sự kiện mới (chỉ ORGANIZER)
+      operationId: createEvent
+      parameters:
+        - name: X-User-Id
+          in: header
+          required: true
+          description: ID của người tạo (Organizer) — inject bởi API Gateway
+          schema:
+            type: string
+            format: uuid
+        - name: X-User-Role
+          in: header
+          required: true
+          description: Role của người dùng (phải là ORGANIZER)
+          schema:
+            type: string
+            example: ORGANIZER
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventRequest'
+      responses:
+        '201':
+          description: Tạo thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+
+  /api/events/{id}:
+    get:
+      summary: Lấy thông tin chi tiết một sự kiện
+      operationId: getEventById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID của sự kiện
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+
+  /api/tickets/book:
+    post:
+      summary: Đặt nhiều loại vé trong 1 lượt (chỉ USER)
+      description: |
+        Cho phép user đặt nhiều loại vé cho cùng 1 sự kiện trong một request.
+
+        **Validation rules:**
+        - Tổng số vé tất cả loại trong 1 request + đã đặt trước đó ≤ `maxTicketsPerUser` của sự kiện
+        - Mỗi loại vé: `quantity` ≤ `maxOrderQuantity` của loại vé đó
+        - Tất cả `ticketTypeId` phải thuộc cùng 1 `eventId`
+
+        **Luồng sau khi gọi thành công:**
+        1. Trừ kho vé trong Redis (atomic)
+        2. Tạo `UserTicketBooking` PENDING cho mỗi loại vé
+        3. Ghi Outbox event `ticket.reserved` → Kafka → Order Service tạo đơn
+      operationId: bookTicket
+      parameters:
+        - name: X-User-Id
+          in: header
+          required: true
+          description: ID của người dùng đặt vé — inject bởi API Gateway
+          schema:
+            type: string
+            format: uuid
+        - name: X-User-Email
+          in: header
+          required: true
+          description: Email của người dùng — inject bởi API Gateway
+          schema:
+            type: string
+            format: email
+        - name: X-User-Role
+          in: header
+          required: false
+          description: Role của người dùng (mặc định USER)
+          schema:
+            type: string
+            default: USER
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookTicketRequest'
+            example:
+              eventId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+              items:
+                - ticketTypeId: "uuid-vip-type"
+                  quantity: 2
+                - ticketTypeId: "uuid-standard-type"
+                  quantity: 3
+      responses:
+        '200':
+          description: Đặt vé thành công — đơn hàng đang chờ thanh toán
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookTicketResponse'
+        '400':
+          description: |
+            Lỗi validate:
+            - Số lượng vé vượt quá `maxOrderQuantity` của loại vé
+            - Loại vé không thuộc sự kiện này
+        '403':
+          description: Chỉ USER mới được đặt vé
+        '429':
+          description: Tổng số vé vượt quá `maxTicketsPerUser` của sự kiện
+        '410':
+          description: Hết vé (Sold Out)
+
+components:
+  schemas:
+
+    CreateEventRequest:
+      type: object
+      required:
+        - title
+        - ticketTypes
+        - startTime
+        - endTime
+      properties:
+        title:
+          type: string
+          example: Đại nhạc hội mùa hè
+        description:
+          type: string
+          example: Mô tả sự kiện
+        location:
+          type: string
+          example: Nhà hát lớn Hà Nội
+        startTime:
+          type: string
+          format: date-time
+          example: "2026-05-01T19:00:00"
+        endTime:
+          type: string
+          format: date-time
+          example: "2026-05-01T23:00:00"
+        maxTicketsPerUser:
+          type: integer
+          default: 10
+          description: |
+            Tổng số vé tối đa mà 1 user có thể đặt cho sự kiện này.
+            Tính tổng tất cả loại vé (VIP + Standard + ...).
+            Organizer có thể tuỳ chỉnh con số này.
+          example: 5
+        ticketTypes:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/TicketTypeRequest'
+
+    TicketTypeRequest:
+      type: object
+      required:
+        - name
+        - price
+        - quantity
+      properties:
+        name:
+          type: string
+          example: VIP
+        price:
+          type: integer
+          format: int64
+          example: 500000
+        quantity:
+          type: integer
+          description: Tổng số vé loại này phát hành
+          example: 100
+        maxOrderQuantity:
+          type: integer
+          default: 10
+          description: Số lượng tối đa của loại vé này được đặt trong 1 đơn hàng duy nhất
+          example: 4
+
+    EventResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        organizerId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [DRAFT, PUBLISHED, CANCELLED]
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        location:
+          type: string
+        maxTicketsPerUser:
+          type: integer
+          description: Tổng số vé tối đa mà 1 user có thể đặt cho sự kiện này
+          example: 10
+        createdAt:
+          type: string
+          format: date-time
+
+    BookTicketRequest:
+      type: object
+      required:
+        - eventId
+        - items
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: ID của sự kiện cần đặt vé
+        items:
+          type: array
+          minItems: 1
+          description: Danh sách các loại vé và số lượng muốn đặt trong 1 lượt
+          items:
+            $ref: '#/components/schemas/BookTicketItemRequest'
+
+    BookTicketItemRequest:
+      type: object
+      required:
+        - ticketTypeId
+        - quantity
+      properties:
+        ticketTypeId:
+          type: string
+          format: uuid
+          description: ID của loại vé muốn đặt
+        quantity:
+          type: integer
+          minimum: 1
+          description: Số lượng vé loại này muốn đặt
+
+    BookTicketResponse:
+      type: object
+      properties:
+        bookingGroupId:
+          type: string
+          format: uuid
+          description: |
+            ID nhóm booking — dùng để nhận diện tất cả các vé được đặt cùng 1 lượt.
+            Khi Order bị hủy, toàn bộ vé trong nhóm này sẽ được hoàn lại.
+        message:
+          type: string
+          example: Ticket booking is pending confirmation.
+        status:
+          type: string
+          enum: [PENDING, SENT, CANCELLED]
+
+    # =============================================
+    # KAFKA EVENT SCHEMAS (tham khảo)
+    # =============================================
+
+    KafkaTicketReservedEvent:
+      description: |
+        **Topic:** `ticket.reserved`
+        **Producer:** event-ticket-service (Outbox)
+        **Consumer:** order-service
+        **Mô tả:** Gửi khi user đặt vé thành công, kích hoạt Order Service tạo đơn hàng
+      type: object
+      properties:
+        bookingGroupId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        eventId:
+          type: string
+          format: uuid
+        totalPrice:
+          type: integer
+          format: int64
+        idempotencyKey:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              ticketTypeId:
+                type: string
+                format: uuid
+              ticketTypeName:
+                type: string
+              quantity:
+                type: integer
+              price:
+                type: integer
+                format: int64
+
+    KafkaTicketReleaseEvent:
+      description: |
+        **Topic:** `ticket.release`
+        **Producer:** order-service (Outbox)
+        **Consumer:** event-ticket-service
+        **Mô tả:** Gửi khi đơn hàng bị hủy (hết hạn / thanh toán thất bại). event-ticket-service hoàn lại toàn bộ kho vé.
+      type: object
+      properties:
+        bookingGroupId:
+          type: string
+          format: uuid
+        bookingIdempotencyKey:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              ticketTypeId:
+                type: string
+                format: uuid
+              quantity:
+                type: integer

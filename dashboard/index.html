@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Ticketing - Distributed Saga & Stress Test Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #090d16;
+            --surface: #111726;
+            --surface-hover: #172033;
+            --border: #1e293b;
+            --border-highlight: #334155;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.25);
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.2);
+            --warning: #f59e0b;
+            --warning-glow: rgba(245, 158, 11, 0.2);
+            --danger: #ef4444;
+            --danger-glow: rgba(239, 68, 68, 0.2);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --font: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: var(--font);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-image: 
+                radial-gradient(at 10% 10%, rgba(59, 130, 246, 0.08) 0px, transparent 50%),
+                radial-gradient(at 90% 90%, rgba(16, 185, 129, 0.05) 0px, transparent 50%);
+        }
+
+        /* Top Header */
+        header {
+            border-bottom: 1px solid var(--border);
+            background: rgba(17, 23, 38, 0.7);
+            backdrop-filter: blur(12px);
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-logo {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--primary), #8b5cf6);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            color: white;
+            font-size: 16px;
+            box-shadow: 0 0 16px var(--primary-glow);
+        }
+
+        .brand-text h1 {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .brand-text p {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 8px;
+            background: var(--surface);
+            padding: 4px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+        }
+
+        .nav-tab {
+            padding: 8px 18px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .nav-tab.active {
+            background: var(--border-highlight);
+            color: var(--text);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        /* Health bar */
+        .health-bar {
+            display: flex;
+            gap: 12px;
+            padding: 12px 32px;
+            background: rgba(17, 23, 38, 0.4);
+            border-bottom: 1px solid var(--border);
+            overflow-x: auto;
+        }
+
+        .health-chip {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--danger);
+            box-shadow: 0 0 8px var(--danger-glow);
+            transition: all 0.3s ease;
+        }
+
+        .status-dot.up {
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success-glow);
+        }
+
+        /* Main Container */
+        main {
+            flex: 1;
+            padding: 24px 32px;
+            max-width: 1400px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Grid Layouts */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .card-title {
+            font-size: 15px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .badge {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            background: var(--border-highlight);
+            color: var(--text-muted);
+        }
+
+        .badge.primary { background: var(--primary-glow); color: var(--primary); }
+        .badge.success { background: var(--success-glow); color: var(--success); }
+        .badge.warning { background: var(--warning-glow); color: var(--warning); }
+        .badge.danger  { background: var(--danger-glow);  color: var(--danger); }
+
+        /* Form elements */
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 10px 14px;
+            background: #0b1120;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text);
+            font-family: var(--font);
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+        }
+
+        .input-row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: var(--radius-sm);
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), #2563eb);
+            color: white;
+            box-shadow: 0 4px 12px var(--primary-glow);
+        }
+
+        .btn-primary:hover {
+            opacity: 0.95;
+            transform: translateY(-1px);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, var(--success), #059669);
+            color: white;
+            box-shadow: 0 4px 12px var(--success-glow);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, var(--danger), #dc2626);
+            color: white;
+            box-shadow: 0 4px 12px var(--danger-glow);
+        }
+
+        .btn-secondary {
+            background: var(--surface-hover);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border-highlight);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        /* Console / Log Area */
+        .console {
+            background: #060911;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            height: 320px;
+            overflow-y: auto;
+            color: #cbd5e1;
+            line-height: 1.6;
+        }
+
+        .log-entry {
+            margin-bottom: 6px;
+            word-break: break-all;
+        }
+
+        .log-time {
+            color: #64748b;
+        }
+
+        .log-success { color: var(--success); }
+        .log-warning { color: var(--warning); }
+        .log-error   { color: var(--danger); }
+        .log-info    { color: var(--primary); }
+
+        /* Stats Cards */
+        .stat-card {
+            background: #0b1120;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            text-align: center;
+        }
+
+        .stat-val {
+            font-size: 28px;
+            font-weight: 800;
+            font-family: var(--font-mono);
+            margin: 4px 0;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        /* Progress Bar */
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background: #0b1120;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 16px 0;
+            border: 1px solid var(--border);
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--primary), var(--success));
+            transition: width 0.1s ease;
+        }
+
+        /* Saga Timeline */
+        .timeline {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--border);
+            z-index: 1;
+            transform: translateY(-50%);
+        }
+
+        .timeline-step {
+            position: relative;
+            z-index: 2;
+            background: var(--surface);
+            border: 2px solid var(--border);
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 13px;
+            color: var(--text-muted);
+            transition: all 0.3s;
+        }
+
+        .timeline-step.active {
+            border-color: var(--primary);
+            color: white;
+            background: var(--primary);
+            box-shadow: 0 0 12px var(--primary-glow);
+        }
+
+        .timeline-step.completed {
+            border-color: var(--success);
+            color: white;
+            background: var(--success);
+            box-shadow: 0 0 12px var(--success-glow);
+        }
+
+        .timeline-label {
+            position: absolute;
+            top: 42px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header>
+        <div class="brand">
+            <div class="brand-logo">T</div>
+            <div class="brand-text">
+                <h1>Distributed Ticket Booking Console</h1>
+                <p>SAGA • Outbox Fast-Path • Redis Lua Inventory • Idempotent Consumer</p>
+            </div>
+        </div>
+
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="switchTab('interactive')">Interactive Flow Test</button>
+            <button class="nav-tab" onclick="switchTab('stress')">Concurrency Stress Test (1000 RPS)</button>
+        </div>
+    </header>
+
+    <!-- Health Status Bar -->
+    <div class="health-bar" style="align-items: center; justify-content: space-between;">
+        <div style="display: flex; gap: 12px; align-items: center; overflow-x: auto;">
+            <div class="health-chip">
+                <span class="status-dot" id="dot-gateway"></span>
+                <span>Gateway (:8888)</span>
+            </div>
+            <div class="health-chip">
+                <span class="status-dot" id="dot-ticket"></span>
+                <span>Event Ticket (:8082)</span>
+            </div>
+            <div class="health-chip">
+                <span class="status-dot" id="dot-order"></span>
+                <span>Order (:8083)</span>
+            </div>
+            <div class="health-chip">
+                <span class="status-dot" id="dot-payment"></span>
+                <span>Payment (:8084)</span>
+            </div>
+            <div class="health-chip">
+                <span class="status-dot" id="dot-notification"></span>
+                <span>Notification (:8085)</span>
+            </div>
+        </div>
+        <button class="btn btn-secondary" style="padding: 6px 14px; font-size: 11px; white-space: nowrap;" onclick="checkHealth()">
+            Ping Services
+        </button>
+    </div>
+
+    <!-- Main Content -->
+    <main>
+        <!-- TAB 1: INTERACTIVE FLOW TEST -->
+        <div id="tab-interactive" class="tab-content active">
+            <div class="grid-2">
+                <!-- Left: Booking & Payment Actions -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">1. Dat Ve Nhanh (Saga Booking Flow)</span>
+                        <span class="badge primary">Fast-Path Latency &lt; 5ms</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Endpoint Dich</label>
+                        <select id="interactive-endpoint">
+                            <option value="http://localhost:8888/api/tickets/book" selected>API Gateway (:8888/api/tickets/book)</option>
+                            <option value="http://localhost:8082/api/tickets/book">Direct Event Service (:8082/api/tickets/book)</option>
+                        </select>
+                    </div>
+
+                    <div class="input-row">
+                        <div class="form-group" style="flex: 2;">
+                            <label>Event ID</label>
+                            <input type="text" id="interactive-eventId" value="11111111-1111-1111-1111-111111111111" placeholder="UUID Event">
+                        </div>
+                        <div class="form-group" style="flex: 2;">
+                            <label>Ticket Type ID</label>
+                            <input type="text" id="interactive-typeId" value="22222222-2222-2222-2222-222222222222" placeholder="UUID Ticket Type">
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>So Luong</label>
+                            <input type="number" id="interactive-qty" value="1" min="1" max="4">
+                        </div>
+                    </div>
+
+                    <div class="input-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label>User ID</label>
+                            <input type="text" id="interactive-userId" value="33333333-3333-3333-3333-333333333333">
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>Email</label>
+                            <input type="email" id="interactive-email" value="customer@example.com">
+                        </div>
+                    </div>
+
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="submitBooking()">
+                            Dat Ve (POST /api/tickets/book)
+                        </button>
+                        <button class="btn btn-secondary" onclick="randomUser()">
+                            Sinh User Moi
+                        </button>
+                    </div>
+
+                    <div style="margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border);">
+                        <div class="card-header" style="margin-bottom: 12px;">
+                            <span class="card-title">2. Gia Lap Thanh Toan VNPAY</span>
+                            <span class="badge warning">IPN Webhook Callback</span>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Order ID / Booking Group ID</label>
+                            <input type="text" id="interactive-orderId" placeholder="Nhap hoac auto-dien sau khi dat ve">
+                        </div>
+
+                        <div class="btn-group">
+                            <button class="btn btn-success" onclick="mockPayment(true)">
+                                Mock VNPAY Success (00)
+                            </button>
+                            <button class="btn btn-danger" onclick="mockPayment(false)">
+                                Mock VNPAY Failed (99 - Refund Kho)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Saga Timeline & Live Logs -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Trang Thai Saga & Nhat Ky Xu Ly</span>
+                        <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="clearLogs('interactive-logs')">Clear</button>
+                    </div>
+
+                    <!-- Saga Progress Visual -->
+                    <div style="margin-bottom: 24px;">
+                        <label style="margin-bottom: 12px;">Saga Lifecycle State</label>
+                        <div class="timeline">
+                            <div class="timeline-step" id="step-1">
+                                1
+                                <span class="timeline-label">Reserve</span>
+                            </div>
+                            <div class="timeline-step" id="step-2">
+                                2
+                                <span class="timeline-label">Order</span>
+                            </div>
+                            <div class="timeline-step" id="step-3">
+                                3
+                                <span class="timeline-label">Payment</span>
+                            </div>
+                            <div class="timeline-step" id="step-4">
+                                4
+                                <span class="timeline-label">Completed</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <label style="margin-top: 36px;">Execution Console</label>
+                    <div class="console" id="interactive-logs">
+                        <div class="log-entry log-info">[SYSTEM] Ready for testing. Nhan Dat Ve de bat dau.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: STRESS TEST & BENCHMARK -->
+        <div id="tab-stress" class="tab-content">
+            <div class="grid-2">
+                <!-- Left: Concurrency Settings -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Cau Hinh Thu Nghiem Concurrency</span>
+                        <span class="badge danger">High-Concurrency Simulator</span>
+                    </div>
+
+                    <div class="input-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label>So luong Request</label>
+                            <select id="stress-total-requests">
+                                <option value="50">50 Requests (Test nhanh)</option>
+                                <option value="100" selected>100 Requests</option>
+                                <option value="200">200 Requests</option>
+                                <option value="500">500 Requests</option>
+                                <option value="1000">1000 Requests (Stress test)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>Batch Dong Thoi (Concurrency)</label>
+                            <select id="stress-concurrency">
+                                <option value="10">10 luong song song</option>
+                                <option value="25" selected>25 luong song song</option>
+                                <option value="50">50 luong song song</option>
+                                <option value="100">100 luong song song</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="input-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label>Event ID</label>
+                            <input type="text" id="stress-eventId" value="11111111-1111-1111-1111-111111111111">
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>Ticket Type ID</label>
+                            <input type="text" id="stress-typeId" value="22222222-2222-2222-2222-222222222222">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Target API Endpoint</label>
+                        <select id="stress-url">
+                            <option value="http://localhost:8888/api/tickets/book" selected>API Gateway (:8888/api/tickets/book)</option>
+                            <option value="http://localhost:8082/api/tickets/book">Direct Event Service (:8082/api/tickets/book)</option>
+                        </select>
+                    </div>
+
+                    <div class="btn-group">
+                        <button class="btn btn-primary" id="btn-start-stress" onclick="runStressTest()">
+                            Bat Dau Stress Test
+                        </button>
+                        <button class="btn btn-secondary" id="btn-stop-stress" onclick="stopStressTest()" disabled>
+                            Dung
+                        </button>
+                    </div>
+
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-fill" id="stress-progress"></div>
+                    </div>
+                </div>
+
+                <!-- Right: Real-time Stats & Benchmark Results -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Real-time Benchmark Metrics</span>
+                        <span class="badge success" id="stress-status-badge">IDLE</span>
+                    </div>
+
+                    <div class="grid-3" style="margin-bottom: 16px;">
+                        <div class="stat-card">
+                            <div class="stat-label">Thanh Cong (200 OK)</div>
+                            <div class="stat-val" style="color: var(--success);" id="stat-success">0</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Het Ve (Redis 400)</div>
+                            <div class="stat-val" style="color: var(--warning);" id="stat-soldout">0</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Loi / Rate-Limit</div>
+                            <div class="stat-val" style="color: var(--danger);" id="stat-errors">0</div>
+                        </div>
+                    </div>
+
+                    <div class="grid-3" style="margin-bottom: 16px;">
+                        <div class="stat-card">
+                            <div class="stat-label">Avg Latency</div>
+                            <div class="stat-val" id="stat-latency">0 ms</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Throughput (RPS)</div>
+                            <div class="stat-val" style="color: var(--primary);" id="stat-rps">0</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Total Time</div>
+                            <div class="stat-val" id="stat-duration">0.0 s</div>
+                        </div>
+                    </div>
+
+                    <label>Stress Test Log Stream</label>
+                    <div class="console" id="stress-logs" style="height: 170px;">
+                        <div class="log-entry log-info">[STRESS-TEST] Ready. Chon so luong request va an Bat Dau de benchmark.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const GATEWAY_URL = 'http://localhost:8888';
+        const SERVICES = {
+            gateway: 'http://localhost:8888/actuator/health',
+            ticket: 'http://localhost:8082/actuator/health',
+            order: 'http://localhost:8083/actuator/health',
+            payment: 'http://localhost:8084/actuator/health',
+            notification: 'http://localhost:8085/actuator/health'
+        };
+
+        let isStressRunning = false;
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            if (tabName === 'interactive') {
+                document.querySelectorAll('.nav-tab')[0].classList.add('active');
+                document.getElementById('tab-interactive').classList.add('active');
+            } else {
+                document.querySelectorAll('.nav-tab')[1].classList.add('active');
+                document.getElementById('tab-stress').classList.add('active');
+            }
+        }
+
+        function log(containerId, message, type = 'info') {
+            const container = document.getElementById(containerId);
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            const time = new Date().toLocaleTimeString();
+            entry.innerHTML = `<span class="log-time">[${time}]</span> ${message}`;
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function clearLogs(containerId) {
+            document.getElementById(containerId).innerHTML = '';
+        }
+
+        function randomUser() {
+            const r = crypto.randomUUID ? crypto.randomUUID() : ('u' + Math.floor(Math.random()*100000));
+            document.getElementById('interactive-userId').value = r;
+            document.getElementById('interactive-email').value = `user_${r.substring(0,8)}@example.com`;
+            log('interactive-logs', `Đã sinh User ID mới: ${r}`, 'info');
+        }
+
+        // Manual Health Check Probe
+        async function checkHealth() {
+            log('interactive-logs', 'Đang kiểm tra kết nối các service...', 'info');
+            for (const [key, url] of Object.entries(SERVICES)) {
+                const dot = document.getElementById(`dot-${key}`);
+                try {
+                    const res = await fetch(url, { method: 'GET', mode: 'cors' });
+                    if (res.ok) {
+                        dot.classList.add('up');
+                        continue;
+                    }
+                } catch (e) {
+                    try {
+                        const resNoCors = await fetch(url, { method: 'GET', mode: 'no-cors' });
+                        if (resNoCors.type === 'opaque' || resNoCors.status === 0 || resNoCors.ok) {
+                            dot.classList.add('up');
+                            continue;
+                        }
+                    } catch (err) {}
+                }
+                dot.classList.remove('up');
+            }
+            log('interactive-logs', 'Đã cập nhật trạng thái các service.', 'success');
+        }
+
+        // Run once on load
+        setTimeout(checkHealth, 500);
+
+        // 1. Submit Ticket Booking
+        async function submitBooking() {
+            const endpoint = document.getElementById('interactive-endpoint').value;
+            const eventId = document.getElementById('interactive-eventId').value.trim();
+            const ticketTypeId = document.getElementById('interactive-typeId').value.trim();
+            const quantity = parseInt(document.getElementById('interactive-qty').value);
+            const userId = document.getElementById('interactive-userId').value.trim();
+            const email = document.getElementById('interactive-email').value.trim();
+
+            log('interactive-logs', `Gửi yêu cầu đặt vé tới ${endpoint}...`, 'info');
+            setTimelineStep(1);
+
+            const payload = {
+                eventId: eventId,
+                items: [{
+                    ticketTypeId: ticketTypeId,
+                    quantity: quantity
+                }]
+            };
+
+            const startTime = performance.now();
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-User-Id': userId,
+                        'X-User-Email': email,
+                        'X-User-Role': 'USER'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const latency = (performance.now() - startTime).toFixed(2);
+                const text = await res.text();
+                let data = {};
+                try { data = JSON.parse(text); } catch (e) { data = { raw: text }; }
+
+                if (res.ok) {
+                    log('interactive-logs', `[200 OK (${latency}ms)] Đặt vé thành công! BookingGroupId: ${data.bookingGroupId}`, 'success');
+                    if (data.bookingGroupId) {
+                        document.getElementById('interactive-orderId').value = data.bookingGroupId;
+                    }
+                    setTimelineStep(2);
+                } else {
+                    log('interactive-logs', `[${res.status} (${latency}ms)] Thất bại: ${text}`, 'error');
+                }
+            } catch (e) {
+                log('interactive-logs', `Lỗi mạng/Fetch: ${e.message}`, 'error');
+            }
+        }
+
+        // 2. Mock VNPAY IPN Payment
+        async function mockPayment(isSuccess) {
+            const orderId = document.getElementById('interactive-orderId').value.trim();
+            if (!orderId) {
+                alert('Vui lòng nhập Order ID / Booking Group ID trước!');
+                return;
+            }
+
+            const responseCode = isSuccess ? '00' : '99';
+            log('interactive-logs', `Gửi IPN Callback VNPAY (${responseCode}) cho orderId=${orderId}...`, 'info');
+
+            try {
+                const url = `http://localhost:8084/api/v1/payments/vnpay/return?vnp_TxnRef=${orderId}&vnp_ResponseCode=${responseCode}`;
+                const res = await fetch(url, { method: 'GET' });
+                const data = await res.json();
+
+                if (isSuccess) {
+                    log('interactive-logs', `[VNPAY SUCCESS] Xác nhận thanh toán thành công! Saga hoàn tất.`, 'success');
+                    setTimelineStep(4);
+                } else {
+                    log('interactive-logs', `[VNPAY FAILED] Thanh toán thất bại! Saga kích hoạt Compensation hoàn kho vé.`, 'warning');
+                }
+            } catch (e) {
+                log('interactive-logs', `Lỗi IPN: ${e.message}`, 'error');
+            }
+        }
+
+        function setTimelineStep(stepNumber) {
+            for (let i = 1; i <= 4; i++) {
+                const el = document.getElementById(`step-${i}`);
+                if (i < stepNumber) {
+                    el.className = 'timeline-step completed';
+                } else if (i === stepNumber) {
+                    el.className = 'timeline-step active';
+                } else {
+                    el.className = 'timeline-step';
+                }
+            }
+        }
+
+        // 3. Concurrency Stress Test Engine
+        async function runStressTest() {
+            const totalRequests = parseInt(document.getElementById('stress-total-requests').value);
+            const concurrency = parseInt(document.getElementById('stress-concurrency').value);
+            const eventId = document.getElementById('stress-eventId').value.trim();
+            const ticketTypeId = document.getElementById('stress-typeId').value.trim();
+            const targetUrl = document.getElementById('stress-url').value.trim();
+
+            isStressRunning = true;
+            document.getElementById('btn-start-stress').disabled = true;
+            document.getElementById('btn-stop-stress').disabled = false;
+            document.getElementById('stress-status-badge').className = 'badge warning';
+            document.getElementById('stress-status-badge').innerText = 'RUNNING';
+
+            let successCount = 0;
+            let soldOutCount = 0;
+            let errorCount = 0;
+            let completed = 0;
+            let totalLatency = 0;
+
+            const startTime = performance.now();
+            log('stress-logs', `Bắt đầu Benchmark: ${totalRequests} requests (Concurrency: ${concurrency})...`, 'info');
+
+            const makeRequest = async (index) => {
+                if (!isStressRunning) return;
+
+                const userId = `user-${Math.floor(Math.random() * 100000)}`;
+                const email = `${userId}@loadtest.com`;
+                const payload = {
+                    eventId: eventId,
+                    items: [{ ticketTypeId: ticketTypeId, quantity: 1 }]
+                };
+
+                const reqStart = performance.now();
+                try {
+                    const res = await fetch(targetUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-User-Id': '33333333-3333-3333-3333-333333333333',
+                            'X-User-Email': email,
+                            'X-User-Role': 'USER'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const reqDuration = performance.now() - reqStart;
+                    totalLatency += reqDuration;
+
+                    if (res.status === 200) {
+                        successCount++;
+                    } else if (res.status === 400) {
+                        soldOutCount++;
+                    } else {
+                        errorCount++;
+                    }
+                } catch (e) {
+                    errorCount++;
+                }
+
+                completed++;
+                const progressPct = ((completed / totalRequests) * 100).toFixed(0);
+                document.getElementById('stress-progress').style.width = `${progressPct}%`;
+                document.getElementById('stat-success').innerText = successCount;
+                document.getElementById('stat-soldout').innerText = soldOutCount;
+                document.getElementById('stat-errors').innerText = errorCount;
+                document.getElementById('stat-latency').innerText = `${(totalLatency / completed).toFixed(1)} ms`;
+
+                const elapsedSec = (performance.now() - startTime) / 1000;
+                document.getElementById('stat-duration').innerText = `${elapsedSec.toFixed(1)} s`;
+                document.getElementById('stat-rps').innerText = (completed / elapsedSec).toFixed(0);
+            };
+
+            // Run in concurrent chunks
+            const promises = [];
+            for (let i = 0; i < totalRequests; i++) {
+                if (!isStressRunning) break;
+                promises.push(makeRequest(i));
+                if (promises.length >= concurrency) {
+                    await Promise.race(promises);
+                }
+            }
+            await Promise.all(promises);
+
+            const totalDuration = ((performance.now() - startTime) / 1000).toFixed(2);
+            log('stress-logs', `Hoàn tất Benchmark trong ${totalDuration}s. Thành công: ${successCount}, Hết vé: ${soldOutCount}, Lỗi: ${errorCount}`, 'success');
+
+            stopStressTest();
+        }
+
+        function stopStressTest() {
+            isStressRunning = false;
+            document.getElementById('btn-start-stress').disabled = false;
+            document.getElementById('btn-stop-stress').disabled = true;
+            document.getElementById('stress-status-badge').className = 'badge success';
+            document.getElementById('stress-status-badge').innerText = 'COMPLETED';
+        }
+    </script>
+</body>
+</html>

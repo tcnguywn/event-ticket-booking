@@ -1,0 +1,116 @@
+{
+  "id": "event-ticketing",
+  "realm": "event-ticketing",
+  "displayName": "Event Ticketing System",
+  "displayNameHtml": "<b>Event Ticketing System</b>",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 10,
+  "roles": {
+    "realm": [
+      {
+        "name": "USER",
+        "description": "Standard Customer Role - Quyền đặt vé và xem đơn hàng cá nhân"
+      },
+      {
+        "name": "ORGANIZER",
+        "description": "Event Organizer Role - Quyền tạo và quản lý sự kiện"
+      },
+      {
+        "name": "ADMIN",
+        "description": "System Administrator Role"
+      }
+    ]
+  },
+  "defaultRoles": [
+    "USER"
+  ],
+  "clients": [
+    {
+      "clientId": "event-ticketing-client",
+      "name": "Event Ticketing Frontend & Mobile Client",
+      "description": "Client phục vụ Frontend React và API Testing",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:8888/*",
+        "*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost:8888",
+        "*"
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "roles",
+        "profile",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "organizer",
+      "enabled": true,
+      "email": "organizer@ticketing.com",
+      "emailVerified": true,
+      "firstName": "Event",
+      "lastName": "Organizer",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ORGANIZER"
+      ],
+      "clientRoles": {}
+    },
+    {
+      "username": "john_doe",
+      "enabled": true,
+      "email": "john_doe@example.com",
+      "emailVerified": true,
+      "firstName": "John",
+      "lastName": "Doe",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "USER"
+      ],
+      "clientRoles": {}
+    }
+  ]
+}

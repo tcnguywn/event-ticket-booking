@@ -1,0 +1,56 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: event-ticket-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/event_ticket_db
+    username: postgres
+    password: root
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    defer-datasource-initialization: true
+  sql:
+    init:
+      mode: always
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  elasticsearch:
+    uris: ${SPRING_ELASTICSEARCH_URIS:http://localhost:9200}
+
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: event-ticket-group
+      auto-offset-reset: earliest
+
+logging:
+  level:
+    org.springframework.web: INFO
+    com.hdv.event_ticket_service: WARN
+    org.hibernate.SQL: OFF
+    org.hibernate.orm.jdbc.bind: OFF
+    org.hibernate: ERROR
+
+management:
+  tracing:
+    enabled: false
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: always
