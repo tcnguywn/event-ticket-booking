@@ -2,6 +2,7 @@ import { request } from '../api.js';
 import { State } from '../state.js';
 import { CONFIG } from '../config.js';
 import { formatVND, formatDate, generateUUID } from '../utils.js';
+import { getRecentBookings, saveRecentBookings } from './orders.js';
 
 export function initBookingView(eventId = null) {
     const container = document.getElementById('booking-view');
@@ -20,11 +21,14 @@ export function initBookingView(eventId = null) {
                 <div class="card" style="margin-bottom: 16px;">
                     <div class="card-header">
                         <span class="card-title">🎪 Sơ Đồ Chọn Ghế (Model A: Numbered Seats)</span>
-                        <div style="display: flex; gap: 8px;">
+                        <div style="display: flex; gap: 6px; align-items: center;">
                             <span class="badge" style="background: white; border: 1px solid var(--border); color: var(--text-main);">Trống</span>
                             <span class="badge" style="background: var(--primary); color: white;">Đang chọn</span>
                             <span class="badge badge-warning">Đang giữ chỗ</span>
                             <span class="badge badge-subtle">Đã bán</span>
+                            <button class="btn btn-secondary btn-sm" id="btn-clear-seat-holds" title="Giải phóng các ghế đang giữ chỗ tạm thời" style="font-size: 11px; padding: 2px 8px; margin-left: 4px;">
+                                🔄 Nhả ghế
+                            </button>
                         </div>
                     </div>
 
@@ -105,6 +109,38 @@ export function initBookingView(eventId = null) {
 
     renderSampleSeatMatrix(targetEventId);
     setupBookingEvents(targetEventId);
+
+    const btnClearHolds = document.getElementById('btn-clear-seat-holds');
+    if (btnClearHolds) {
+        btnClearHolds.addEventListener('click', () => {
+            sessionStorage.removeItem('ticketflow_booked_seats');
+            renderSampleSeatMatrix(targetEventId);
+            alert('🔄 Đã giải phóng toàn bộ ghế trên sơ đồ!');
+        });
+    }
+}
+
+// Deterministic UUID for seats (A01 - C08)
+function getDeterministicSeatId(row, num) {
+    const rowOffset = { 'A': 0, 'B': 8, 'C': 16 }[row] || 0;
+    const seatIndex = rowOffset + parseInt(num);
+    const hex = seatIndex.toString(16).padStart(12, '0');
+    return `00000000-0000-0000-0001-${hex}`;
+}
+
+function getBookedSeats() {
+    try {
+        const stored = sessionStorage.getItem('ticketflow_booked_seats');
+        return stored ? JSON.parse(stored) : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveBookedSeats(seatsArray) {
+    try {
+        sessionStorage.setItem('ticketflow_booked_seats', JSON.stringify(seatsArray));
+    } catch {}
 }
 
 // Render sample seat map with 24 seats (Row A, B, C)
@@ -114,20 +150,24 @@ function renderSampleSeatMatrix(eventId) {
 
     const rows = ['A', 'B', 'C'];
     const seats = [];
+    const bookedList = getBookedSeats();
 
     rows.forEach(row => {
         for (let i = 1; i <= 8; i++) {
             const num = i < 10 ? `0${i}` : `${i}`;
-            // Sample mock: Seat A03 is HOLD, B05 is BOOKED
+            const label = `${row}${num}`;
+            const seatId = getDeterministicSeatId(row, num);
+
             let status = 'free';
-            if (row === 'A' && i === 3) status = 'hold';
-            if (row === 'B' && i === 5) status = 'booked';
+            if (bookedList.includes(label)) {
+                status = 'hold';
+            }
 
             seats.push({
-                id: generateUUID(),
+                id: seatId,
                 seatRow: row,
                 seatNumber: num,
-                label: `${row}${num}`,
+                label,
                 price: 1500000,
                 status
             });
@@ -265,6 +305,32 @@ async function executeBooking(eventId) {
 
         State.currentBookingGroup = response.bookingGroupId;
 
+        // Save selected seats to booked list
+        if (State.selectedSeats.length > 0) {
+            const bookedList = getBookedSeats();
+            State.selectedSeats.forEach(s => {
+                if (!bookedList.includes(s.label)) {
+                    bookedList.push(s.label);
+                }
+            });
+            saveBookedSeats(bookedList);
+        }
+
+        // Save to recent bookings for instant display in Orders tab
+        const recent = getRecentBookings();
+        const vipPrice = State.selectedSeats.reduce((sum, s) => sum + s.price, 0);
+        const gaPrice = State.zoneQuantity * 650000;
+        recent.unshift({
+            id: response.bookingGroupId,
+            bookingGroupId: response.bookingGroupId,
+            eventId: eventId,
+            createdAt: new Date().toISOString(),
+            totalPrice: vipPrice + gaPrice,
+            status: 'PENDING',
+            seats: State.selectedSeats.map(s => s.label)
+        });
+        saveRecentBookings(recent);
+
         btnSubmit.style.display = 'none';
         btnPayment.style.display = 'block';
         btnPayment.onclick = () => window.AppRouter.navigateTo('orders', { bookingGroupId: response.bookingGroupId });
@@ -272,7 +338,7 @@ async function executeBooking(eventId) {
         timerBadge.style.display = 'inline-flex';
         waitingRoomAlert.style.display = 'none';
 
-        alert(`🎉 Đặt vé thành công! Mã đơn: ${response.bookingGroupId}. Bạn có 10 phút để thanh toán.`);
+        alert(`🎉 Đặt vé thành công! Mã đơn: ${response.bookingGroupId}.\nBạn có 10 phút để thanh toán.`);
 
     } catch (err) {
         if (err.status === 429 && err.data && err.data.status === 'WAITING_ROOM') {

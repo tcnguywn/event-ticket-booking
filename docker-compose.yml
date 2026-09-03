@@ -298,24 +298,19 @@ services:
       - ticketing-net
 
   # ============================================================
-  # 14. Elasticsearch 8.11 (Search & Faceted Filter on port 9200)
+  # 14. Elasticsearch (Disabled)
   # ============================================================
-  elasticsearch:
-    image: elasticsearch:8.11.3
-    container_name: ticketing_elasticsearch
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-    ports:
-      - "9200:9200"
-    networks:
-      - ticketing-net
-    healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+#  elasticsearch:
+#    image: elasticsearch:8.11.3
+#    container_name: ticketing_elasticsearch
+#    environment:
+#      - discovery.type=single-node
+#      - xpack.security.enabled=false
+#      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+#    ports:
+#      - "9200:9200"
+#    networks:
+#      - ticketing-net
 
   # ============================================================
   # 15. Minimalist Frontend Service (Web UI on port 3000)

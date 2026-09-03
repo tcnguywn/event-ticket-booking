@@ -1,8 +1,18 @@
+param(
+    [switch]$StopDocker = $false
+)
+
 # Script dung toan bo cac microservices dang chay
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "  STOPPING ALL TICKET BOOKING SERVICES   " -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
 
+$rootPath = $PSScriptRoot
+if (-not $rootPath) {
+    $rootPath = Get-Location
+}
+
+# 1. Dung cac Java Microservices theo port
 $ports = @(8888, 8082, 8083, 8084, 8085)
 
 foreach ($port in $ports) {
@@ -30,7 +40,8 @@ foreach ($port in $ports) {
     if ($pids.Count -gt 0) {
         foreach ($procId in ($pids | Select-Object -Unique)) {
             try {
-                Write-Host "Stopping PID: $procId listening on port $port..." -ForegroundColor Yellow
+                $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
+                Write-Host "Stopping process: $($proc.ProcessName) (PID: $procId) listening on port $port..." -ForegroundColor Yellow
                 Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
             } catch {
                 # Process already stopped
@@ -41,8 +52,25 @@ foreach ($port in $ports) {
     }
 }
 
-# Cleanup gradle daemons
+# 2. Cleanup gradle daemons
+Write-Host "`nStopping Gradle Daemons..." -ForegroundColor DarkGray
 ./gradlew --stop 2>$null
+
+# 3. Dung Docker Containers neu co flag -StopDocker
+if ($StopDocker) {
+    Write-Host "`nStopping Docker Infrastructure Containers (MailHog, Kafka, Redis, Keycloak)..." -ForegroundColor Yellow
+    if (Get-Command docker -ErrorAction SilentlyContinue) {
+        $containers = @("ticketing_keycloak", "redis-server", "qi-kafka-1", "qi-kafka-ui-1", "ticketing_mailhog")
+        foreach ($c in $containers) {
+            $id = docker ps -q -f "name=^/${c}$"
+            if ($id) {
+                Write-Host "  -> Stopping container: $c..." -ForegroundColor DarkYellow
+                docker stop $c | Out-Null
+            }
+        }
+        Write-Host "Docker containers stopped." -ForegroundColor Green
+    }
+}
 
 Write-Host "`n=========================================" -ForegroundColor Green
 Write-Host "  ALL SERVICES STOPPED SUCCESSFULLY!     " -ForegroundColor Green

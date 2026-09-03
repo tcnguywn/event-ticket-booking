@@ -81,6 +81,20 @@ public class VNPayController {
         String responseCode = params.get("vnp_ResponseCode");
         String orderIdStr = params.get("vnp_TxnRef");
         
+        if (orderIdStr != null && !orderIdStr.isBlank()) {
+            try {
+                if ("00".equals(responseCode)) {
+                    paymentService.handlePaymentSuccess(orderIdStr);
+                    log.info("Processed payment success via return callback for orderId: {}", orderIdStr);
+                } else {
+                    paymentService.handlePaymentFailed(orderIdStr, "VNPAY Return Error Code: " + responseCode);
+                    log.warn("Processed payment failure via return callback for orderId: {}", orderIdStr);
+                }
+            } catch (Exception e) {
+                log.warn("Error processing payment in return callback: {}", e.getMessage());
+            }
+        }
+
         return ResponseEntity.ok(Map.of(
                 "orderId", orderIdStr != null ? orderIdStr : "unknown",
                 "status", "00".equals(responseCode) ? "SUCCESS" : "FAILED",

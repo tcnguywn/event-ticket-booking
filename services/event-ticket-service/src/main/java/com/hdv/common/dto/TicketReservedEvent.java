@@ -1,5 +1,6 @@
 package com.hdv.common.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,6 +15,7 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class TicketReservedEvent implements Serializable {
     private UUID bookingGroupId;
     private UUID userId;
@@ -23,5 +25,5 @@ public class TicketReservedEvent implements Serializable {
     private UUID idempotencyKey;
     private List<TicketItemDto> items;
     @Builder.Default
-    private Instant timestamp = Instant.now();
+    private String timestamp = Instant.now().toString();
 }

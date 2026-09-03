@@ -26,11 +26,23 @@ CREATE TABLE IF NOT EXISTS shedlock (
 -- Seed Sample Event
 INSERT INTO events (id, title, description, organizer_id, status, start_time, end_time, location, max_tickets_per_user, created_at)
 VALUES ('11111111-1111-1111-1111-111111111111', 'Concert World Tour 2026', 'Dai nhac hoi quoc te', '00000000-0000-0000-0000-000000000001', 'PUBLISHED', '2026-10-01 19:00:00', '2026-10-01 23:00:00', 'Ha Noi Stadium', 10, CURRENT_TIMESTAMP)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    organizer_id = EXCLUDED.organizer_id,
+    status = EXCLUDED.status,
+    start_time = EXCLUDED.start_time,
+    end_time = EXCLUDED.end_time,
+    location = EXCLUDED.location,
+    max_tickets_per_user = EXCLUDED.max_tickets_per_user;
 
 -- Seed Sample Ticket Types
 INSERT INTO ticket_types (id, event_id, name, price, quantity, max_order_quantity, created_at)
 VALUES 
 ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'VIP Diamond', 1500000, 500, 4, CURRENT_TIMESTAMP),
 ('33333333-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'Standard GA', 650000, 2000, 4, CURRENT_TIMESTAMP)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    price = EXCLUDED.price,
+    quantity = EXCLUDED.quantity,
+    max_order_quantity = EXCLUDED.max_order_quantity;

@@ -3,13 +3,14 @@ import { State } from '../state.js';
 import { CONFIG } from '../config.js';
 import { calculateHmacSha256, generateUUID } from '../utils.js';
 
-const CHECKIN_SECRET = 'secure-event-ticket-secret-key-2026';
+const CHECKIN_SECRET = 'SecretConcertKeyForCheckIn2026!';
 
 export function initCheckInView() {
     const container = document.getElementById('checkin-view');
     if (!container) return;
 
     const sampleTicketId = generateUUID();
+    const sampleEventId = State.selectedEvent ? State.selectedEvent.id : CONFIG.SAMPLE_EVENT_ID;
 
     container.innerHTML = `
         <div class="grid-2">
@@ -22,13 +23,21 @@ export function initCheckInView() {
                     </div>
 
                     <div class="form-group">
+                        <label>Mã Sự Kiện (Event ID)</label>
+                        <input type="text" id="chk-event-id" value="${sampleEventId}">
+                    </div>
+
+                    <div class="form-group">
                         <label>Mã Vé (Ticket ID / UUID)</label>
-                        <input type="text" id="chk-ticket-id" value="${sampleTicketId}">
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="chk-ticket-id" value="${sampleTicketId}" style="flex: 1;">
+                            <button class="btn btn-secondary btn-sm" id="btn-new-ticket">🎲 Sinh Vé Mới</button>
+                        </div>
                     </div>
 
                     <div class="form-group">
                         <label>Chữ Ký Điện Tử (QR HMAC Signature)</label>
-                        <input type="text" id="chk-signature" placeholder="Tự động sinh hoặc nhập chữ ký">
+                        <input type="text" id="chk-signature" placeholder="Tự động sinh chữ ký QR">
                     </div>
 
                     <div class="form-group">
@@ -42,7 +51,7 @@ export function initCheckInView() {
 
                     <div style="display: flex; gap: 8px; margin-bottom: 16px;">
                         <button class="btn btn-secondary" id="btn-gen-sig" style="flex: 1;">
-                            🔑 Tự Động Sinh Chữ Ký Hợp Lệ
+                            🔑 Sinh Chữ Ký Hợp Lệ
                         </button>
                         <button class="btn btn-primary" id="btn-do-checkin" style="flex: 1;">
                             📷 Quét & Soát Vé Ngay
@@ -51,8 +60,8 @@ export function initCheckInView() {
 
                     <div style="padding: 10px; background: var(--bg-subtle); border-radius: var(--radius-sm); font-size: 12px; color: var(--text-muted);">
                         <b>Kiểm thử chống gian lận (Anti-Fraud Double Scan):</b>
-                        <br>• Lần 1: Hệ thống xác thực chữ ký và khóa atomic <code>SET NX</code> trên Redis $\rightarrow$ HỢP LỆ.
-                        <br>• Lần 2 (quét lại cùng vé): Redis phát hiện trùng lặp $\rightarrow$ CẢNH BÁO ĐỎ TỨC THÌ.
+                        <br>• Lần 1: Hệ thống xác thực chữ ký HMAC và ghi nhận Redis <code>SET NX</code> $\rightarrow$ <span style="color: var(--success); font-weight: 600;">HỢP LỆ</span>.
+                        <br>• Lần 2 (quét lại cùng vé): Redis phát hiện trùng lặp $\rightarrow$ <span style="color: var(--danger); font-weight: 600;">CẢNH BÁO ĐỎ TỨC THÌ</span>.
                     </div>
                 </div>
             </div>
@@ -72,6 +81,10 @@ export function initCheckInView() {
         </div>
     `;
 
+    document.getElementById('btn-new-ticket').addEventListener('click', () => {
+        document.getElementById('chk-ticket-id').value = generateUUID();
+        generateSignature();
+    });
     document.getElementById('btn-gen-sig').addEventListener('click', generateSignature);
     document.getElementById('btn-do-checkin').addEventListener('click', executeCheckIn);
 
@@ -81,10 +94,12 @@ export function initCheckInView() {
 
 async function generateSignature() {
     const ticketId = document.getElementById('chk-ticket-id').value.trim();
-    if (!ticketId) return;
+    const eventId = document.getElementById('chk-event-id').value.trim();
+    if (!ticketId || !eventId) return;
 
     try {
-        const sig = await calculateHmacSha256(ticketId, CHECKIN_SECRET);
+        const rawData = `${ticketId}:${eventId}`;
+        const sig = await calculateHmacSha256(rawData, CHECKIN_SECRET);
         document.getElementById('chk-signature').value = sig;
     } catch (e) {
         console.error('Failed to generate HMAC', e);
@@ -93,22 +108,23 @@ async function generateSignature() {
 
 async function executeCheckIn() {
     const ticketId = document.getElementById('chk-ticket-id').value.trim();
+    const eventId = document.getElementById('chk-event-id').value.trim();
     const signature = document.getElementById('chk-signature').value.trim();
     const gate = document.getElementById('chk-gate').value;
     const resultBox = document.getElementById('checkin-result-box');
 
-    if (!ticketId || !signature) {
-        alert('Vui lòng nhập Ticket ID và Signature!');
+    if (!ticketId || !eventId || !signature) {
+        alert('Vui lòng nhập Ticket ID, Event ID và Signature!');
         return;
     }
 
-    resultBox.innerHTML = '<div style="color: var(--text-muted);">Đang đối soát chữ ký và kiểm tra Redis...</div>';
+    resultBox.innerHTML = '<div style="color: var(--text-muted);">Đang đối soát chữ ký và kiểm tra Redis SET NX...</div>';
 
     try {
         const payload = {
             ticketId,
-            qrSignature: signature,
-            gateName: gate
+            eventId,
+            signature
         };
 
         const res = await request('/api/tickets/check-in', {
@@ -120,13 +136,13 @@ async function executeCheckIn() {
             resultBox.innerHTML = `
                 <div style="color: var(--success); font-size: 48px; margin-bottom: 8px;">✅</div>
                 <div style="font-size: 18px; font-weight: 700; color: var(--success); margin-bottom: 6px;">VÉ HỢP LỆ - MỜI VÀO CỔNG</div>
-                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">Cổng: <b>${res.gateName || gate}</b> | Thời gian: <b>${new Date().toLocaleTimeString()}</b></div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">Cổng: <b>${gate}</b> | Thời gian: <b>${new Date().toLocaleTimeString()}</b></div>
                 <div style="font-size: 11px; background: var(--success-light); color: var(--success); padding: 6px 12px; border-radius: 4px; display: inline-block;">
                     Redis Lock: Đã ghi nhận check-in nguyên tử (Anti Double-Scan)
                 </div>
             `;
         } else {
-            renderCheckinError(resultBox, res.message || 'Vé không hợp lệ');
+            renderCheckinError(resultBox, res.message || 'Vé không hợp lệ hoặc không tìm thấy');
         }
 
     } catch (err) {

@@ -25,12 +25,14 @@ public interface OutboxRepository extends JpaRepository<Outbox, UUID> {
     List<Outbox> findAndLockAvailableEvents(@Param("now") LocalDateTime now, @Param("limit") int limit);
 
     @Modifying
+    @org.springframework.transaction.annotation.Transactional
     @Query("UPDATE Outbox o SET o.status = com.hdv.order_service.outbox.domain.OutboxStatus.SENT, " +
             "o.processedAt = :now, o.lockedBy = null, o.lockedAt = null, o.leaseUntil = null " +
             "WHERE o.id = :id")
     int markAsSent(@Param("id") UUID id, @Param("now") LocalDateTime now);
 
     @Modifying
+    @org.springframework.transaction.annotation.Transactional
     @Query("UPDATE Outbox o SET o.status = com.hdv.order_service.outbox.domain.OutboxStatus.PROCESSING, " +
             "o.lockedBy = :lockedBy, o.lockedAt = :now, o.leaseUntil = :leaseUntil " +
             "WHERE o.id IN :ids")

@@ -27,7 +27,7 @@ public class TicketReservedConsumer {
     private final ProcessedEventRepository processedEventRepository;
     private final ObjectMapper objectMapper;
 
-    @KafkaListener(topics = "ticket.reserved", groupId = "order-service-group")
+    @KafkaListener(topics = "ticket.reserved", groupId = "${spring.kafka.consumer.group-id:order-service-group-v2}")
     public void consume(String message) {
         try {
             // Parse typed JSON payload từ event-ticket-service

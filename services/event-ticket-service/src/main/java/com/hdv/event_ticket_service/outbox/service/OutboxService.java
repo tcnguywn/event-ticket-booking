@@ -23,6 +23,7 @@ public class OutboxService {
 
     private final OutboxRepository outboxRepository;
     private final OutboxPublisher outboxPublisher;
+    private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
     /**
      * Ghi nhận Outbox vào DB trong cùng transaction hiện tại,
@@ -61,8 +62,9 @@ public class OutboxService {
         }
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markAsSent(UUID outboxId) {
-        outboxRepository.markAsSent(outboxId, LocalDateTime.now());
+        transactionTemplate.executeWithoutResult(status -> {
+            outboxRepository.markAsSent(outboxId, LocalDateTime.now());
+        });
     }
 }

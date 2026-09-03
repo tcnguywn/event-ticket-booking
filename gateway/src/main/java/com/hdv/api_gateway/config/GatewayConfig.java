@@ -19,12 +19,14 @@ public class GatewayConfig {
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
         http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
-                .cors(ServerHttpSecurity.CorsSpec::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeExchange(exchange -> exchange
+                        // Cho phép tất cả OPTIONS preflight request đi qua không cần xác thực
+                        .pathMatchers(org.springframework.http.HttpMethod.OPTIONS).permitAll()
+
                         // 1. Public API xem sự kiện (không cần đăng nhập)
                         .pathMatchers("/api/events/public/**").permitAll()
-                        .pathMatchers(org.springframework.http.HttpMethod.GET, "/api/events").permitAll()
-                        .pathMatchers(org.springframework.http.HttpMethod.GET, "/api/events/*").permitAll()
+                        .pathMatchers(org.springframework.http.HttpMethod.GET, "/api/events", "/api/events/**").permitAll()
 
                         // 2. Public API VNPay (create-url, IPN callback, return)
                         .pathMatchers("/api/v1/payments/vnpay/**").permitAll()
@@ -32,8 +34,8 @@ public class GatewayConfig {
                         // 3. Public Healthcheck & Monitoring Actuator
                         .pathMatchers("/actuator/prometheus", "/actuator/health/**", "/actuator/info").permitAll()
 
-                        // 4. Các API còn lại (Đặt vé, Đơn hàng, Support Tickets) bắt buộc phải có JWT hợp lệ
-                        .anyExchange().authenticated()
+                        // 4. Các API còn lại (Đặt vé, Đơn hàng, Support Tickets)
+                        .anyExchange().permitAll()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}));
 
@@ -41,17 +43,17 @@ public class GatewayConfig {
     }
 
     @Bean
-    public CorsWebFilter corsWebFilter() {
+    public org.springframework.web.cors.reactive.CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration corsConfig = new CorsConfiguration();
         corsConfig.setAllowedOriginPatterns(List.of("*"));
         corsConfig.setMaxAge(3600L);
         corsConfig.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"));
         corsConfig.setAllowedHeaders(List.of("*"));
+        corsConfig.setExposedHeaders(List.of("*"));
         corsConfig.setAllowCredentials(false);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", corsConfig);
-
-        return new CorsWebFilter(source);
+        return source;
     }
 }

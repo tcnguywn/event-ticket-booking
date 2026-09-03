@@ -1,3 +1,7 @@
+param(
+    [switch]$Clean = $false
+)
+
 # Script compile toan bo cac service trong he thong
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "  COMPILING ALL MICROSERVICES (NO TESTS) " -ForegroundColor Cyan
@@ -15,6 +19,12 @@ if (-not $rootPath) {
 
 Push-Location $rootPath
 
+if ($Clean) {
+    Write-Host "Cleaning previous build artifacts..." -ForegroundColor Yellow
+    ./gradlew clean
+}
+
+Write-Host "Compiling Java classes..." -ForegroundColor Yellow
 ./gradlew compileJava -x test
 
 if ($LASTEXITCODE -ne 0) {

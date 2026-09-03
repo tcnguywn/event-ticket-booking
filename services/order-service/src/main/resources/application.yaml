@@ -17,6 +17,7 @@ spring:
   sql:
     init:
       mode: always
+      continue-on-error: true
 
   security:
     oauth2:
@@ -31,7 +32,7 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
     consumer:
-      group-id: order-service-group
+      group-id: order-service-group-v2
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer

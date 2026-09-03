@@ -31,6 +31,16 @@ public class EventController {
         return eventService.getAllEvents();
     }
 
+    @GetMapping("/search")
+    public List<EventResponse> searchEvents(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String location,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) Double minPrice,
+            @RequestParam(required = false) Double maxPrice) {
+        return eventService.searchEvents(keyword, location, category, minPrice, maxPrice);
+    }
+
     @GetMapping("/{id}")
     public EventResponse getEvent(@PathVariable("id") UUID id) {
         return eventService.getEvent(id);

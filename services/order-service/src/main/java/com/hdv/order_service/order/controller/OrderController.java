@@ -35,10 +35,10 @@ public class OrderController {
         }
 
         /**
-         * GET /api/orders/my — Xem lịch sử đặt vé của user hiện tại
+         * GET /api/orders — Xem lịch sử đặt vé của user hiện tại
          */
-        @GetMapping("/my")
-        public ApiResponse<List<OrderResponse>> getMyOrders(
+        @GetMapping
+        public ApiResponse<List<OrderResponse>> getOrders(
                         @RequestHeader("X-User-Id") String userId) {
 
                 List<OrderResponse> orders = orderService.getOrdersByUserId(UUID.fromString(userId));
@@ -48,6 +48,15 @@ public class OrderController {
                                 .message("Lấy danh sách lịch sử đơn hàng thành công")
                                 .body(orders)
                                 .build();
+        }
+
+        /**
+         * GET /api/orders/my — Xem lịch sử đặt vé của user hiện tại
+         */
+        @GetMapping("/my")
+        public ApiResponse<List<OrderResponse>> getMyOrders(
+                        @RequestHeader("X-User-Id") String userId) {
+                return getOrders(userId);
         }
 
         /**

@@ -64,18 +64,6 @@ public class EventService {
             redisTemplate.opsForValue().set(key, String.valueOf(ticketType.getQuantity()));
         }
 
-        // Bắn CDC Event vào Outbox để đồng bộ sang Elasticsearch
-        com.hdv.event_ticket_service.outbox.domain.Outbox outbox = com.hdv.event_ticket_service.outbox.domain.Outbox.builder()
-                .eventId(UUID.randomUUID())
-                .aggregateType("EVENT")
-                .aggregateId(event.getId().toString())
-                .eventType("EVENT_UPSERTED")
-                .topic("event.cdc.sync")
-                .payload(String.format("{\"eventId\":\"%s\"}", event.getId()))
-                .status(com.hdv.event_ticket_service.outbox.domain.OutboxStatus.PENDING)
-                .build();
-        outboxService.saveOutboxAndRegisterFastPath(outbox);
-
         log.info("Event created with ID: {}", event.getId());
 
         return mapToResponse(event);
@@ -84,6 +72,25 @@ public class EventService {
     public List<EventResponse> getAllEvents() {
         return eventRepository.findAll().stream()
                 .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    public List<EventResponse> searchEvents(String keyword, String location, String category, Double minPrice, Double maxPrice) {
+        return getAllEvents().stream()
+                .filter(e -> keyword == null || keyword.isBlank() ||
+                        e.getTitle().toLowerCase().contains(keyword.toLowerCase()) ||
+                        (e.getDescription() != null && e.getDescription().toLowerCase().contains(keyword.toLowerCase())))
+                .filter(e -> location == null || location.isBlank() ||
+                        (e.getLocation() != null && e.getLocation().equalsIgnoreCase(location)))
+                .filter(e -> {
+                    if (minPrice == null && maxPrice == null) return true;
+                    double lowestPrice = e.getTicketTypes().stream()
+                            .mapToDouble(TicketTypeResponse::getPrice)
+                            .min().orElse(0.0);
+                    if (minPrice != null && lowestPrice < minPrice) return false;
+                    if (maxPrice != null && lowestPrice > maxPrice) return false;
+                    return true;
+                })
                 .collect(Collectors.toList());
     }
 
