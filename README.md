@@ -183,9 +183,3 @@ After 30–60 seconds once containers report `healthy`, navigate to the web inte
 | **Payment Service** | [`http://localhost:8084`](http://localhost:8084) | VNPay Sandbox payment gateway integration. |
 | **Notification Service** | [`http://localhost:8085`](http://localhost:8085) | Cryptographic QR ticket issuance and email delivery. |
 
----
-
-## 👨‍💻 8. AUTHOR & CONTACT
-* **Project:** TicketFlow — High-Concurrency Distributed Ticketing Platform
-* **GitHub Repository:** [https://github.com/tcnguywn/event-ticket-booking](https://github.com/tcnguywn/event-ticket-booking)
-* **Domain Focus:** Senior Java Backend Engineer / Distributed Systems Enthusiast.
