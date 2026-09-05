@@ -1,9 +1,6 @@
 package com.hdv.event_ticket_service.ticket.service;
 
 import com.hdv.common.dto.ReleaseItemDto;
-import com.hdv.event_ticket_service.saga.domain.SagaInstance;
-import com.hdv.event_ticket_service.saga.domain.SagaStatus;
-import com.hdv.event_ticket_service.saga.repository.SagaInstanceRepository;
 import com.hdv.event_ticket_service.ticket.domain.entity.BookingSeat;
 import com.hdv.event_ticket_service.ticket.domain.entity.UserTicketBooking;
 import com.hdv.event_ticket_service.ticket.domain.enums.BookingSeatStatus;
@@ -21,21 +18,19 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class BookingSagaService {
+public class BookingService {
 
     private final UserTicketBookingRepository userTicketBookingRepository;
     private final BookingSeatRepository bookingSeatRepository;
     private final SeatReservationService seatReservationService;
     private final InventoryService inventoryService;
-    private final SagaInstanceRepository sagaInstanceRepository;
 
     /**
-     * Xác nhận chốt đơn vé trong Saga khi nhận order.confirmed:
+     * Xác nhận chốt đơn vé khi nhận order.confirmed:
      * 1. Kiểm tra Idempotent (nếu đã CONFIRMED thì bỏ qua an toàn).
      * 2. Lấy danh sách ghế từ booking_seats (tránh N+1).
      * 3. Chốt trạng thái ghế sang BOOKED trên Redis & DB.
      * 4. Cập nhật booking status -> CONFIRMED.
-     * 5. Cập nhật Saga status -> COMPLETED.
      */
     @Transactional
     public void confirmBooking(UUID bookingGroupId) {
@@ -84,23 +79,15 @@ public class BookingSagaService {
         }
         userTicketBookingRepository.saveAll(bookings);
 
-        // 5. Cập nhật Saga Instance
-        sagaInstanceRepository.findByBusinessId(bookingGroupId.toString()).ifPresent(saga -> {
-            saga.setStatus(SagaStatus.COMPLETED);
-            saga.setCurrentStep("BOOKING_CONFIRMED");
-            sagaInstanceRepository.save(saga);
-        });
-
-        log.info("Xác nhận hoàn tất Saga cho BookingGroup: {}", bookingGroupId);
+        log.info("Xác nhận hoàn tất đặt vé cho BookingGroup: {}", bookingGroupId);
     }
 
     /**
-     * Nhả ghế và hoàn kho trong Saga Compensation khi nhận ticket.release:
+     * Nhả ghế và hoàn kho khi nhận ticket.release:
      * 1. Kiểm tra Idempotent (chống hoàn kho nhiều lần).
      * 2. Nhả ghế trước (chỉ nhả ghế đúng reservation của user).
      * 3. Hoàn kho Redis chỉ cho các vé khu vực/vé đứng (vé không có số ghế).
      * 4. Cập nhật booking status -> CANCELLED, seat status -> RELEASED.
-     * 5. Cập nhật Saga status -> COMPENSATED.
      */
     @Transactional
     public void releaseBooking(UUID bookingGroupId, List<ReleaseItemDto> items) {
@@ -172,13 +159,6 @@ public class BookingSagaService {
         }
         userTicketBookingRepository.saveAll(bookings);
 
-        // 6. Cập nhật Saga Instance
-        sagaInstanceRepository.findByBusinessId(bookingGroupId.toString()).ifPresent(saga -> {
-            saga.setStatus(SagaStatus.COMPENSATED);
-            saga.setCurrentStep("RELEASE_COMPLETED");
-            sagaInstanceRepository.save(saga);
-        });
-
-        log.info("Hoàn tất bồi hoàn Saga (Release) cho BookingGroup: {}", bookingGroupId);
+        log.info("Hoàn tất bồi hoàn (Release) cho BookingGroup: {}", bookingGroupId);
     }
 }

@@ -3,7 +3,7 @@ package com.hdv.event_ticket_service.kafka;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hdv.common.dto.TicketReleaseEvent;
 import com.hdv.event_ticket_service.idempotency.ProcessedEventRepository;
-import com.hdv.event_ticket_service.ticket.service.BookingSagaService;
+import com.hdv.event_ticket_service.ticket.service.BookingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -21,7 +21,7 @@ public class TicketReleaseConsumer {
     private static final String CONSUMER_NAME = "TicketReleaseConsumer";
 
     private final ProcessedEventRepository processedEventRepository;
-    private final BookingSagaService bookingSagaService;
+    private final BookingService bookingService;
     private final ObjectMapper objectMapper;
 
     @KafkaListener(topics = "ticket.release", groupId = "event-ticket-group")
@@ -38,8 +38,8 @@ public class TicketReleaseConsumer {
                 return;
             }
 
-            // Thực thi release ghế và hoàn kho nguyên tử, an toàn trong BookingSagaService
-            bookingSagaService.releaseBooking(event.getBookingGroupId(), event.getItems());
+            // Thực thi release ghế và hoàn kho nguyên tử, an toàn trong BookingService
+            bookingService.releaseBooking(event.getBookingGroupId(), event.getItems());
 
         } catch (Exception e) {
             log.error("Failed to process ticket release: {}", e.getMessage(), e);

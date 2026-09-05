@@ -15,9 +15,6 @@ import com.hdv.event_ticket_service.outbox.domain.Outbox;
 import com.hdv.event_ticket_service.outbox.domain.OutboxStatus;
 import com.hdv.event_ticket_service.outbox.repository.OutboxRepository;
 import com.hdv.event_ticket_service.outbox.service.OutboxService;
-import com.hdv.event_ticket_service.saga.domain.SagaInstance;
-import com.hdv.event_ticket_service.saga.domain.SagaStatus;
-import com.hdv.event_ticket_service.saga.repository.SagaInstanceRepository;
 import com.hdv.event_ticket_service.ticket.domain.dtos.BookTicketRequest;
 import com.hdv.event_ticket_service.ticket.domain.dtos.BookTicketResponse;
 import com.hdv.event_ticket_service.ticket.domain.entity.TicketType;
@@ -45,7 +42,6 @@ public class TicketBookingService {
     private final InventoryService inventoryService;
     private final SeatReservationService seatReservationService;
     private final OutboxService outboxService;
-    private final SagaInstanceRepository sagaInstanceRepository;
     private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper;
 
@@ -135,7 +131,7 @@ public class TicketBookingService {
         }
 
         try {
-            // Mở Transaction bao trọn các thao tác DB ghi nhận booking, saga state và outbox
+            // Mở Transaction bao trọn các thao tác DB ghi nhận booking và outbox
             return transactionTemplate.execute(status -> {
                 try {
                     // Step 3: Check maxTicketsPerUser cho toàn bộ sự kiện
@@ -191,17 +187,7 @@ public class TicketBookingService {
                         log.info("Saved {} booking_seats mapping records for bookingGroup {}", bookingSeats.size(), bookingGroupId);
                     }
 
-                    // Step 6: Ghi nhận Saga State
-                    com.hdv.event_ticket_service.saga.domain.SagaInstance saga = com.hdv.event_ticket_service.saga.domain.SagaInstance.builder()
-                            .correlationId(idempotencyKey)
-                            .businessId(bookingGroupId.toString())
-                            .sagaType("TICKET_BOOKING_SAGA")
-                            .currentStep("RESERVE_TICKET")
-                            .status(com.hdv.event_ticket_service.saga.domain.SagaStatus.STARTED)
-                            .build();
-                    sagaInstanceRepository.save(saga);
-
-                    // Step 7: Ghi Outbox event và kích hoạt AFTER_COMMIT Fast-Path
+                    // Step 6: Ghi Outbox event và kích hoạt AFTER_COMMIT Fast-Path
                     Outbox outbox = Outbox.builder()
                             .eventId(idempotencyKey)
                             .aggregateType("BOOKING_GROUP")

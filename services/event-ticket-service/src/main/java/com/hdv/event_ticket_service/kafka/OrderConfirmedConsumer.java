@@ -3,7 +3,7 @@ package com.hdv.event_ticket_service.kafka;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hdv.common.dto.OrderConfirmedEvent;
 import com.hdv.event_ticket_service.idempotency.ProcessedEventRepository;
-import com.hdv.event_ticket_service.ticket.service.BookingSagaService;
+import com.hdv.event_ticket_service.ticket.service.BookingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -21,7 +21,7 @@ public class OrderConfirmedConsumer {
     private static final String CONSUMER_NAME = "OrderConfirmedConsumer";
 
     private final ProcessedEventRepository processedEventRepository;
-    private final BookingSagaService bookingSagaService;
+    private final BookingService bookingService;
     private final ObjectMapper objectMapper;
 
     @KafkaListener(topics = "order.confirmed", groupId = "event-ticket-group")
@@ -38,8 +38,8 @@ public class OrderConfirmedConsumer {
                 return;
             }
 
-            // Chốt booking và chốt trạng thái ghế vĩnh viễn trong BookingSagaService
-            bookingSagaService.confirmBooking(event.getBookingGroupId());
+            // Chốt booking và chốt trạng thái ghế vĩnh viễn trong BookingService
+            bookingService.confirmBooking(event.getBookingGroupId());
 
         } catch (Exception e) {
             log.error("Failed to process order.confirmed event: {}", e.getMessage(), e);

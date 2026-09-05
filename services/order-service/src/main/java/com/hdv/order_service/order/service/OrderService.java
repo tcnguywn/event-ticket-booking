@@ -12,9 +12,6 @@ import com.hdv.order_service.outbox.domain.Outbox;
 import com.hdv.order_service.outbox.domain.OutboxStatus;
 import com.hdv.order_service.outbox.repository.OutboxRepository;
 import com.hdv.order_service.outbox.service.OutboxService;
-import com.hdv.order_service.saga.domain.SagaInstance;
-import com.hdv.order_service.saga.domain.SagaStatus;
-import com.hdv.order_service.saga.repository.SagaInstanceRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RDelayedQueue;
@@ -33,7 +30,6 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final OutboxService outboxService;
-    private final SagaInstanceRepository sagaInstanceRepository;
     private final RDelayedQueue<String> orderDelayedQueue;
     private final ObjectMapper objectMapper;
 
@@ -92,17 +88,7 @@ public class OrderService {
 
         orderRepository.save(order);
 
-        // 3. Ghi nhận Saga State
-        com.hdv.order_service.saga.domain.SagaInstance saga = com.hdv.order_service.saga.domain.SagaInstance.builder()
-                .correlationId(idempotencyKey)
-                .businessId(order.getId().toString())
-                .sagaType("TICKET_BOOKING_SAGA")
-                .currentStep("CREATE_ORDER")
-                .status(com.hdv.order_service.saga.domain.SagaStatus.PROCESSING)
-                .build();
-        sagaInstanceRepository.save(saga);
-
-        // 4. Ghi sự kiện "order.created" vào Outbox và kích hoạt Fast-Path
+        // 3. Ghi sự kiện "order.created" vào Outbox và kích hoạt Fast-Path
         String payload = buildPayloadForPayment(order);
         Outbox outbox = Outbox.builder()
                 .eventId(UUID.randomUUID())
@@ -134,13 +120,6 @@ public class OrderService {
         if (order.getStatus() == OrderStatus.PENDING) {
             order.setStatus(OrderStatus.CONFIRMED);
             orderRepository.save(order);
-
-            // Cập nhật Saga state
-            sagaInstanceRepository.findByBusinessId(orderId.toString()).ifPresent(saga -> {
-                saga.setStatus(com.hdv.order_service.saga.domain.SagaStatus.COMPLETED);
-                saga.setCurrentStep("ORDER_CONFIRMED");
-                sagaInstanceRepository.save(saga);
-            });
 
             // Publish sự kiện order.confirmed cho Notification Service via Fast-Path
             String payload = buildPayloadForOrderConfirmed(order);
@@ -177,13 +156,6 @@ public class OrderService {
     public void cancelOrder(Order order) {
         order.setStatus(OrderStatus.CANCELLED);
         orderRepository.save(order);
-
-        // Cập nhật Saga state
-        sagaInstanceRepository.findByBusinessId(order.getId().toString()).ifPresent(saga -> {
-            saga.setStatus(com.hdv.order_service.saga.domain.SagaStatus.COMPENSATING);
-            saga.setCurrentStep("RELEASING_TICKET");
-            sagaInstanceRepository.save(saga);
-        });
 
         // Ghi sự kiện "ticket.release" vào Outbox via Fast-Path để event-ticket-service hoàn lại vé
         String releasePayload = buildPayloadForRelease(order);
